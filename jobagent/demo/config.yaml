@@ -1,0 +1,17 @@
+# Config used by `python -m jobagent --demo`. The board URL and the Excel path are set at runtime.
+sites:
+  demo: true
+daily_limit:
+  demo: 10
+min_fit: 5
+pause_between_applications: [0, 0]
+llm:
+  score_model: haiku
+  form_model: sonnet
+excel: applications.xlsx
+cv_dir: cv
+cvs:
+  - file: Alex_Example_CV.txt
+    use_for: Any offer.
+exclude_if_title_has: [senior, lead, principal, staff, manager]
+title_keywords: [backend, python, integration, developer]

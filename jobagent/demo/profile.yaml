@@ -1,0 +1,28 @@
+# Fictional candidate for the demo.
+first_name: Alex
+last_name: Example
+email: alex@example.com
+phone: "+58 400 000 0000"
+city: Caracas
+country: Venezuela
+linkedin: https://www.linkedin.com/in/alex-example
+work_mode: 100% remote only.
+english: B2
+years_of_experience:
+  software_development: 3
+  python: 3
+  sql: 2
+summary: >
+  I build backend services and API integrations in Python, and I like turning manual processes into
+  automated ones.
+screening_rules:
+  - Only accepts 100% remote work. On-site or hybrid offers get fit 1.
+fixed_answers:
+  - {pattern: "e-?mail", value: "alex@example.com"}
+  - {pattern: "phone", value: "4000000000"}
+  - {pattern: "first name", value: "Alex"}
+  - {pattern: "last name", value: "Example"}
+  - {pattern: "linkedin", value: "https://www.linkedin.com/in/alex-example"}
+  - {pattern: "authorized to work", value: "Yes"}
+  - {pattern: "sponsorship", value: "No"}
+  - {pattern: "english level", value: "Intermediate"}

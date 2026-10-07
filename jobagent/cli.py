@@ -4,13 +4,18 @@
   python -m jobagent --dry-run    do everything except submitting
   python -m jobagent --login      open every board to log in (first time only)
   python -m jobagent --only linkedin
+  python -m jobagent --demo       run the whole flow on a local fake board, no accounts needed
 """
 import argparse
 import datetime as dt
 import os
 import re
 import sys
+import tempfile
+import threading
 from collections import Counter
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import yaml
@@ -23,6 +28,7 @@ from jobagent.sites import SITES
 from jobagent.tracker import Tracker
 
 ROOT = Path.cwd()
+DEMO = Path(__file__).parent / "demo"
 BROWSER_PROFILE = Path(os.environ.get("JOBAGENT_BROWSER", Path.home() / ".jobagent" / "browser"))
 
 
@@ -68,8 +74,8 @@ def word_pattern(words, whole_word):
     return re.compile("|".join(re.escape(w) for w in words), re.I)
 
 
-def load_yaml(name):
-    path = ROOT / name
+def load_yaml(name, root=ROOT):
+    path = root / name
     if not path.exists():
         sys.exit(f"{name} not found. Copy {path.stem}.example.yaml to {name} and edit it.")
     return path.read_text(encoding="utf-8")
@@ -89,19 +95,19 @@ def login_mode(cfg):
 
 
 class Run:
-    def __init__(self, cfg, dry_run):
+    def __init__(self, cfg, dry_run, root=ROOT, data=DATA_DIR):
         self.cfg = cfg
         self.dry_run = dry_run
-        self.profile_text = load_yaml("profile.yaml")
+        self.profile_text = load_yaml("profile.yaml", root)
         profile = yaml.safe_load(self.profile_text)
         self.rules = profile.get("screening_rules", [])
-        self.cv_dir = (ROOT / cfg["cv_dir"]).resolve()
+        self.cv_dir = (root / cfg["cv_dir"]).resolve()
         self.cvs = cfg["cvs"]
         missing = [c["file"] for c in self.cvs if not (self.cv_dir / c["file"]).exists()]
         if missing:
             sys.exit(f"CVs not found in {self.cv_dir}: {missing}")
-        self.tracker = Tracker((ROOT / cfg["excel"]).resolve(), DATA_DIR, log)
-        self.assistant = FormAssistant(profile, self.profile_text, DATA_DIR, cfg["llm"]["form_model"], log)
+        self.tracker = Tracker((root / cfg["excel"]).resolve(), data, log)
+        self.assistant = FormAssistant(profile, self.profile_text, data, cfg["llm"]["form_model"], log)
         self.exclude = word_pattern(cfg.get("exclude_if_title_has"), whole_word=True)
         self.keywords = word_pattern(cfg.get("title_keywords"), whole_word=False)
         self.summary = Counter()
@@ -194,40 +200,25 @@ class Run:
         pause(*self.cfg["pause_between_applications"])
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="jobagent")
-    ap.add_argument("--dry-run", action="store_true", help="do everything except submitting")
-    ap.add_argument("--login", action="store_true", help="open the boards to log in")
-    ap.add_argument("--only", choices=list(SITES), help="use a single board")
-    args = ap.parse_args()
-    cfg = yaml.safe_load(load_yaml("config.yaml"))
-    if args.login:
-        login_mode(cfg)
-        return
-    dry_run = args.dry_run or cfg.get("dry_run", False)
-    run = Run(cfg, dry_run)
-    sites = [args.only] if args.only else [s for s, on in cfg["sites"].items() if on]
-    log(f"=== Start {'(DRY RUN: nothing is sent)' if dry_run else ''} | boards: {', '.join(sites)} ===")
-    try:
-        with sync_playwright() as p:
-            ctx = open_browser(p)
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            for site in sites:
-                label = SITES[site].LABEL
-                log(f"--- {label} ---")
-                try:
-                    run.process(page, site)
-                except SessionExpired:
-                    log(f"{label}: not logged in. Run `python -m jobagent --login` once and retry.")
-                except LLMUnavailable:
-                    log("Claude is not answering (usage limit?). Stopping; retry later.")
-                    break
-                except Exception as e:
-                    log(f"{label}: unexpected error, moving to the next board: {type(e).__name__}: {e}")
-                    screenshot(page, site)
-            ctx.close()
-    except KeyboardInterrupt:
-        log("Stopped by the user.")
+def run_all(run, sites, ctx):
+    log(f"=== Start {'(DRY RUN: nothing is sent)' if run.dry_run else ''} | boards: {', '.join(sites)} ===")
+    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+    for site in sites:
+        label = SITES[site].LABEL
+        log(f"--- {label} ---")
+        try:
+            run.process(page, site)
+        except SessionExpired:
+            log(f"{label}: not logged in. Run `python -m jobagent --login` once and retry.")
+        except LLMUnavailable:
+            log("Claude is not answering (usage limit?). Stopping; retry later.")
+            break
+        except Exception as e:
+            log(f"{label}: unexpected error, moving to the next board: {type(e).__name__}: {e}")
+            screenshot(page, site)
+
+
+def report(run, sites):
     s = run.summary
     log("=== Summary ===")
     for site in sites:
@@ -235,3 +226,67 @@ def main():
             f"to do by hand {s[site, 'manual'] + s[site, 'error']} | discarded by fit {s[site, 'discarded']}")
     if run.tracker.pending:
         log("Some rows are waiting for the Excel file to be closed; they will be saved on the next run.")
+
+
+class _QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+
+def demo(headless=False, dry_run=False):
+    """Runs the full flow against the fake board in jobagent/demo. Data goes to a fresh temp folder."""
+    previous_llm = os.environ.get("JOBAGENT_LLM")
+    os.environ.setdefault("JOBAGENT_LLM", "fake")  # JOBAGENT_LLM=claude runs the demo with the real model
+    cfg = yaml.safe_load(load_yaml("config.yaml", DEMO))
+    data = Path(tempfile.mkdtemp(prefix="jobagent-demo-"))
+    cfg["excel"] = str(data / "applications.xlsx")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(_QuietHandler, directory=str(DEMO / "board")))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    cfg["demo_url"] = f"http://127.0.0.1:{server.server_port}"
+    try:
+        run = Run(cfg, dry_run, root=DEMO, data=data)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless, slow_mo=0 if headless else 400)
+            run_all(run, ["demo"], browser.new_context())
+    except KeyboardInterrupt:
+        log("Stopped by the user.")
+    finally:
+        server.shutdown()
+        server.server_close()
+        if previous_llm is None:
+            os.environ.pop("JOBAGENT_LLM", None)
+        else:
+            os.environ["JOBAGENT_LLM"] = previous_llm
+    report(run, ["demo"])
+    log(f"Demo Excel and history are in {data}; logs are in {DATA_DIR / 'logs'}")
+    return run
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="jobagent")
+    ap.add_argument("--dry-run", action="store_true", help="do everything except submitting")
+    ap.add_argument("--login", action="store_true", help="open the boards to log in")
+    ap.add_argument("--only", choices=[s for s in SITES if s != "demo"], help="use a single board")
+    ap.add_argument("--demo", action="store_true", help="run on a local fake board, no accounts needed")
+    ap.add_argument("--headless", action="store_true", help="with --demo: don't show the browser")
+    args = ap.parse_args()
+    if args.demo:
+        demo(args.headless, args.dry_run)
+        return
+    if os.environ.get("JOBAGENT_LLM") == "fake":
+        sys.exit("JOBAGENT_LLM=fake is only allowed with --demo: it would submit canned answers to real boards.")
+    cfg = yaml.safe_load(load_yaml("config.yaml"))
+    if args.login:
+        login_mode(cfg)
+        return
+    dry_run = args.dry_run or cfg.get("dry_run", False)
+    run = Run(cfg, dry_run)
+    sites = [args.only] if args.only else [s for s, on in cfg["sites"].items() if on]
+    try:
+        with sync_playwright() as p:
+            ctx = open_browser(p)
+            run_all(run, sites, ctx)
+            ctx.close()
+    except KeyboardInterrupt:
+        log("Stopped by the user.")
+    report(run, sites)

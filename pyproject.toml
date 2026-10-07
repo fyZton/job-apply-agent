@@ -36,3 +36,6 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+jobagent = ["demo/*.yaml", "demo/cv/*", "demo/board/*.html", "demo/board/*/*.html"]

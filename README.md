@@ -27,6 +27,31 @@ search (per-board plugin) -> title filters -> LLM fit score (1-10) -> pick CV ->
 |---|---|
 | LinkedIn (Easy Apply) | Working |
 | Computrabajo Venezuela | Working |
+| Demo board (local, fake) | Working, used by `--demo` and CI |
+
+## Try it without accounts
+
+```bash
+pip install -e .
+playwright install chromium
+python -m jobagent --demo
+```
+
+This starts a fake job board on your machine (`jobagent/demo/board`) and opens a browser so you can watch the
+agent work through six made-up offers:
+
+| Offer | What the agent does |
+|---|---|
+| Backend Developer (Python) | Fills a one-page form, uploads the CV and submits |
+| Integrations Developer | Goes through a two-step form with unlabeled radios, a select and a consent checkbox |
+| Python Developer | Stops: the form asks for a national ID number, which the profile doesn't have |
+| Senior Backend Engineer | Skips it by title, without calling the LLM |
+| Backend Developer (on-site, Madrid) | Scores it low because the profile only accepts remote work |
+| Python Backend Developer | Skips it: already applied |
+
+The demo uses a stub instead of the LLM (`JOBAGENT_LLM=fake`), so it needs no Claude account. Run
+`JOBAGENT_LLM=claude python -m jobagent --demo` to use the real model. Add `--headless` to hide the browser and
+`--dry-run` to stop before every submit. CI runs the same scenario on every push.
 
 ## Quick start
 
@@ -75,7 +100,7 @@ can contain your filled-in data; they stay local and are git-ignored.
 - [x] Tests with local HTML fixtures and a fake LLM, CI on Windows and Linux, secret scanning
 - [ ] Profile setup from your existing CV (`--setup`)
 - [ ] ATS-friendly CV generator (PDF/DOCX, English/Spanish), tailored per offer without adding facts
-- [ ] Demo mode with a fake local job board, runnable without accounts
+- [x] Demo mode with a fake local job board, runnable without accounts
 - [ ] Prompt-injection defense and LLM evals for honesty
 - [ ] SQLite state machine, funnel report and human-approval dashboard
 - [ ] Docker image
