@@ -14,6 +14,7 @@ PROFILE = {"fixed_answers": [{"pattern": "e-?mail", "value": "alex@example.com"}
     ("Basic", ["Basic (A2)", "Fluent"], 0),
     ("Venezula", ["Venezuela", "Colombia"], 0),
     ("Rust", ["Python", "Java"], None),
+    ("Maybe", ["Yes", "No"], None),
     ("", ["Yes", "No"], None),
 ])
 def test_best_option(value, options, expected):

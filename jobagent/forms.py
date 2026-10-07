@@ -113,7 +113,8 @@ def best_option(value, options):
     for i, o in enumerate(norm):
         if v and (v in o or o in v) and o:
             return i
-    close = difflib.get_close_matches(v, norm, n=1, cutoff=0.5)
+    # 0.8 tolerates typos ("venezula") but not different words: at 0.5 "maybe" matched "yes".
+    close = difflib.get_close_matches(v, norm, n=1, cutoff=0.8)
     return norm.index(close[0]) if close else None
 
 
@@ -190,7 +191,7 @@ class FormAssistant:
             llm_answers = r.get("answers") or {}
             for f in pending:
                 value = llm_answers.get(f["id"])
-                if f["id"] in unknown or value in (None, ""):
+                if f["id"] in unknown or not self._valid(f, value):
                     if f["required"]:
                         missing.append(f["question"])
                     continue
