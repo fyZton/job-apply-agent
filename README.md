@@ -1,5 +1,7 @@
 # job-apply-agent
 
+[![CI](https://github.com/fyZton/job-apply-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/fyZton/job-apply-agent/actions/workflows/ci.yml)
+
 A job-application agent I built for my own job search. It finds offers on job boards, scores each one against my
 profile with an LLM, fills the application form and logs everything to a spreadsheet. It has sent real
 applications on LinkedIn and Computrabajo.
@@ -42,6 +44,20 @@ python -m jobagent
 
 `config.yaml`, `profile.yaml`, `cv/` and `data/` are git-ignored, so personal data stays on your machine.
 
+## Tests
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+pytest
+```
+
+The tests never call a real LLM: they replace it with a stub that returns fixed answers, so they are free and
+give the same result every run. The form scanner is tested against a local HTML page that reproduces fields that
+broke the bot on real sites (radios without labels, a "Confirmed" checkbox whose required mark sits outside its
+label, search boxes that must be ignored). CI runs lint and tests on Linux and Windows with Python 3.11 and 3.12,
+and scans the git history for leaked secrets with gitleaks.
+
 ## Use it responsibly
 
 Automating applications can break a job board's terms of service and can get your account restricted. This
@@ -56,7 +72,7 @@ can contain your filled-in data; they stay local and are git-ignored.
 
 ## Roadmap
 
-- [ ] Tests with local HTML fixtures and a fake LLM, CI on Windows and Linux, secret scanning
+- [x] Tests with local HTML fixtures and a fake LLM, CI on Windows and Linux, secret scanning
 - [ ] Profile setup from your existing CV (`--setup`)
 - [ ] ATS-friendly CV generator (PDF/DOCX, English/Spanish), tailored per offer without adding facts
 - [ ] Demo mode with a fake local job board, runnable without accounts
