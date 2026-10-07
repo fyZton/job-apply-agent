@@ -1,0 +1,46 @@
+# Copy to config.yaml and edit.
+
+sites:
+  linkedin: true
+  computrabajo: true
+
+# Max applications SENT per day on each board. Above ~25 on LinkedIn the account risks a restriction.
+daily_limit:
+  linkedin: 10
+  computrabajo: 15
+
+min_fit: 5                  # 1-10: only apply when the LLM scores the offer at least this
+max_age_days: 7             # only offers published in the last N days
+pages_per_search: 2
+pause_between_applications: [90, 240]  # random seconds between applications (human pace)
+
+dry_run: false              # true = fill everything but never submit
+
+llm:
+  score_model: haiku        # fast, to score offers
+  form_model: sonnet        # more careful, to answer form questions
+
+excel: data/applications.xlsx
+cv_dir: cv
+
+# The LLM picks a CV based on "use_for".
+cvs:
+  - file: Alex_Example_Backend_Developer.pdf
+    use_for: English. Backend, API integrations, automation, Python.
+  - file: Alex_Example_CV_Desarrollador.pdf
+    use_for: Spanish. Any offer written in Spanish.
+
+# Offers whose title has any of these words are skipped without spending LLM calls.
+exclude_if_title_has: [senior, sr, lead, principal, staff, architect, manager, director, head, intern]
+
+# LinkedIn: 1 = internship, 2 = entry level, 3 = associate, 4 = mid-senior.
+linkedin_experience_levels: "2,3"
+
+# The offer TITLE must contain at least one of these to be scored by the LLM.
+title_keywords: [backend, back-end, python, integration, automation, developer, desarrollador, programador]
+
+searches:
+  linkedin:
+    - {keywords: Python Backend Developer, location: Latin America, remote: true}
+    - {keywords: Integration Developer, location: Latin America, remote: true}
+  computrabajo: [programador, desarrollador, python]

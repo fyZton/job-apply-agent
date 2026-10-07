@@ -1,0 +1,237 @@
+"""Job-apply agent: finds offers, scores them with an LLM and applies on its own.
+
+  python -m jobagent              apply for real
+  python -m jobagent --dry-run    do everything except submitting
+  python -m jobagent --login      open every board to log in (first time only)
+  python -m jobagent --only linkedin
+"""
+import argparse
+import datetime as dt
+import os
+import re
+import sys
+from collections import Counter
+from pathlib import Path
+
+import yaml
+from playwright.sync_api import sync_playwright
+
+from jobagent import llm
+from jobagent.core import DATA_DIR, SessionExpired, pause
+from jobagent.forms import FormAssistant
+from jobagent.sites import SITES
+from jobagent.tracker import Tracker
+
+ROOT = Path.cwd()
+BROWSER_PROFILE = Path(os.environ.get("JOBAGENT_BROWSER", Path.home() / ".jobagent" / "browser"))
+
+
+class LLMUnavailable(Exception):
+    """Claude is not answering (e.g. the plan's usage limit was reached)."""
+
+
+def log(msg):
+    line = f"[{dt.datetime.now():%H:%M:%S}] {msg}"
+    print(line, flush=True)
+    folder = DATA_DIR / "logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    with open(folder / f"{dt.date.today()}.log", "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def screenshot(page, site):
+    folder = DATA_DIR / "screenshots"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{site}_{dt.datetime.now():%Y%m%d_%H%M%S}.png"
+    try:
+        page.screenshot(path=str(path), full_page=False)
+        return path.name
+    except Exception:
+        return ""
+
+
+def open_browser(p):
+    BROWSER_PROFILE.mkdir(parents=True, exist_ok=True)
+    options = dict(user_data_dir=str(BROWSER_PROFILE), headless=False, no_viewport=True,
+                   args=["--start-maximized"])
+    try:
+        return p.chromium.launch_persistent_context(channel="chrome", **options)
+    except Exception:
+        return p.chromium.launch_persistent_context(**options)
+
+
+def word_pattern(words, whole_word):
+    if not words:
+        return None
+    if whole_word:
+        return re.compile("|".join(rf"(?<!\w){re.escape(w)}(?!\w)" for w in words), re.I)
+    return re.compile("|".join(re.escape(w) for w in words), re.I)
+
+
+def load_yaml(name):
+    path = ROOT / name
+    if not path.exists():
+        sys.exit(f"{name} not found. Copy {path.stem}.example.yaml to {name} and edit it.")
+    return path.read_text(encoding="utf-8")
+
+
+def login_mode(cfg):
+    with sync_playwright() as p:
+        ctx = open_browser(p)
+        sites = [s for s, on in cfg["sites"].items() if on]
+        for i, s in enumerate(sites):
+            page = ctx.pages[0] if i == 0 and ctx.pages else ctx.new_page()
+            page.goto(SITES[s].LOGIN_URL)
+        print("\nLog in on every tab and make sure each profile has your CV uploaded.")
+        input("When done, press Enter here to save the sessions... ")
+        ctx.close()
+    print("Done. Sessions are saved.")
+
+
+class Run:
+    def __init__(self, cfg, dry_run):
+        self.cfg = cfg
+        self.dry_run = dry_run
+        self.profile_text = load_yaml("profile.yaml")
+        profile = yaml.safe_load(self.profile_text)
+        self.rules = profile.get("screening_rules", [])
+        self.cv_dir = (ROOT / cfg["cv_dir"]).resolve()
+        self.cvs = cfg["cvs"]
+        missing = [c["file"] for c in self.cvs if not (self.cv_dir / c["file"]).exists()]
+        if missing:
+            sys.exit(f"CVs not found in {self.cv_dir}: {missing}")
+        self.tracker = Tracker((ROOT / cfg["excel"]).resolve(), DATA_DIR, log)
+        self.assistant = FormAssistant(profile, self.profile_text, DATA_DIR, cfg["llm"]["form_model"], log)
+        self.exclude = word_pattern(cfg.get("exclude_if_title_has"), whole_word=True)
+        self.keywords = word_pattern(cfg.get("title_keywords"), whole_word=False)
+        self.summary = Counter()
+        self.llm_failures = 0
+
+    def process(self, page, site):
+        mod = SITES[site]
+        limit = self.cfg["daily_limit"][site]
+        for offer in mod.search(page, self.cfg, self.tracker.seen):
+            sent = self.summary[site, "dry_run"] if self.dry_run else self.tracker.sent_today(site)
+            if sent >= limit:
+                log(f"{mod.LABEL}: daily limit reached ({limit}).")
+                return
+            self.one_offer(page, site, mod, offer)
+
+    def one_offer(self, page, site, mod, offer):
+        k = offer.key
+        if self.exclude and offer.title and self.exclude.search(offer.title):
+            self.tracker.mark(k, "title_excluded", title=offer.title)
+            return
+        try:
+            status = mod.details(page, offer)
+        except SessionExpired:
+            raise
+        except Exception as e:
+            log(f"{mod.LABEL}: could not open {offer.url} ({type(e).__name__})")
+            return
+        if status != "ok":
+            self.tracker.mark(k, status)
+            return
+        if self.exclude and self.exclude.search(offer.title):
+            self.tracker.mark(k, "title_excluded", title=offer.title)
+            return
+        if self.keywords and not self.keywords.search(offer.title):
+            self.tracker.mark(k, "no_keywords", title=offer.title)
+            return
+
+        ev = llm.score_offer(offer, self.profile_text, self.cvs, self.rules, self.cfg["llm"]["score_model"])
+        if ev is None:
+            self.llm_failures += 1
+            if self.llm_failures >= 3:
+                raise LLMUnavailable()
+            return
+        self.llm_failures = 0
+        try:
+            fit = int(ev.get("fit", 0))
+        except (TypeError, ValueError):
+            fit = 0
+        offer.company = offer.company or ev.get("company", "")
+        offer.title = offer.title or ev.get("title", "")
+        reason = ev.get("reason", "")
+        log(f"{mod.LABEL}: {offer.title} | {offer.company} -> fit {fit}. {reason}")
+        if fit < self.cfg["min_fit"]:
+            self.tracker.mark(k, "low_fit", fit=fit, title=offer.title, reason=reason)
+            self.summary[site, "discarded"] += 1
+            return
+
+        names = [c["file"] for c in self.cvs]
+        cv_name = ev.get("cv") if ev.get("cv") in names else names[0]
+        cv_path = self.cv_dir / cv_name
+        try:
+            result, note = mod.apply(page, offer, cv_path, self.assistant, self.dry_run)
+        except SessionExpired:
+            raise
+        except Exception as e:
+            result, note = "error", f"{type(e).__name__}: {str(e)[:150]}"
+        if result in ("manual", "error"):
+            img = screenshot(page, site)
+            note = f"{note} (screenshot: {img})" if img else note
+        log(f"   -> {result.upper()} {note}")
+        self.summary[site, result] += 1
+
+        if result == "already_applied":
+            self.tracker.mark(k, "already_applied")
+            return
+        if self.dry_run:
+            return  # dry runs never write to the Excel file
+        row = {"Company": offer.company, "Title": offer.title, "Source": mod.LABEL, "Link": offer.url,
+               "Fit (1-10)": fit, "CV used": cv_name}
+        if result == "sent":
+            row.update({"Lane": "Easy apply", "Status": "Sent", "Next step": "Wait for reply",
+                        "Notes": f"Auto. {reason}"})
+            self.tracker.add_sent(site)
+        else:
+            external = "external" in note
+            row.update({"Lane": "Company site" if external else "Easy apply", "Status": "To apply",
+                        "Next step": "Apply by hand", "Notes": f"Bot: {note}. {reason}"})
+        self.tracker.add_row(row)
+        self.tracker.mark(k, result, fit=fit)
+        pause(*self.cfg["pause_between_applications"])
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="jobagent")
+    ap.add_argument("--dry-run", action="store_true", help="do everything except submitting")
+    ap.add_argument("--login", action="store_true", help="open the boards to log in")
+    ap.add_argument("--only", choices=list(SITES), help="use a single board")
+    args = ap.parse_args()
+    cfg = yaml.safe_load(load_yaml("config.yaml"))
+    if args.login:
+        login_mode(cfg)
+        return
+    dry_run = args.dry_run or cfg.get("dry_run", False)
+    run = Run(cfg, dry_run)
+    sites = [args.only] if args.only else [s for s, on in cfg["sites"].items() if on]
+    log(f"=== Start {'(DRY RUN: nothing is sent)' if dry_run else ''} | boards: {', '.join(sites)} ===")
+    try:
+        with sync_playwright() as p:
+            ctx = open_browser(p)
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            for site in sites:
+                label = SITES[site].LABEL
+                log(f"--- {label} ---")
+                try:
+                    run.process(page, site)
+                except SessionExpired:
+                    log(f"{label}: not logged in. Run `python -m jobagent --login` once and retry.")
+                except LLMUnavailable:
+                    log("Claude is not answering (usage limit?). Stopping; retry later.")
+                    break
+                except Exception as e:
+                    log(f"{label}: unexpected error, moving to the next board: {type(e).__name__}: {e}")
+                    screenshot(page, site)
+            ctx.close()
+    except KeyboardInterrupt:
+        log("Stopped by the user.")
+    s = run.summary
+    log("=== Summary ===")
+    for site in sites:
+        log(f"{SITES[site].LABEL}: sent {s[site, 'sent']} | dry-run OK {s[site, 'dry_run']} | "
+            f"to do by hand {s[site, 'manual'] + s[site, 'error']} | discarded by fit {s[site, 'discarded']}")
+    if run.tracker.pending:
+        log("Some rows are waiting for the Excel file to be closed; they will be saved on the next run.")

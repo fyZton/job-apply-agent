@@ -1,0 +1,17 @@
+# Personal data: never commit
+/config.yaml
+/profile.yaml
+/cv/
+/data/
+*.xlsx
+.env*
+*.pem
+*.key
+*.log
+
+# Python
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
