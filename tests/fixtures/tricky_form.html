@@ -1,0 +1,42 @@
+<!doctype html>
+<html><body>
+<form id="search"><input type="search" name="q" placeholder="Search jobs"></form>
+<form id="apply">
+  <label for="email">Email address</label>
+  <input id="email" type="email" required>
+
+  <span id="yrs-label">Years of experience with Python</span>
+  <input type="number" aria-labelledby="yrs-label">
+
+  <fieldset>
+    <legend>Are you authorized to work remotely?</legend>
+    <div><input type="radio" name="auth" value="1"><span>Yes</span></div>
+    <div><input type="radio" name="auth" value="0"><span>No</span></div>
+  </fieldset>
+
+  <div>
+    <p>Do you need visa sponsorship? *</p>
+    <label><input type="radio" name="visa" value="y">Yes</label>
+    <label><input type="radio" name="visa" value="n">No</label>
+  </div>
+
+  <div>
+    <p>I agree to the privacy policy *</p>
+    <label><input type="checkbox" id="agree"> Confirmed</label>
+  </div>
+
+  <label for="english">English level</label>
+  <select id="english"><option>Select an option</option><option>Basic</option><option>Fluent</option></select>
+
+  <label for="city">City</label>
+  <input id="city" role="combobox" aria-autocomplete="list">
+
+  <label for="why">Why do you want this job?</label>
+  <textarea id="why"></textarea>
+
+  <input type="hidden" name="token" value="x">
+  <input type="password" name="pw">
+  <label for="old">Old field</label><input id="old" disabled>
+  <label for="gone">Hidden field</label><input id="gone" style="display:none">
+</form>
+</body></html>

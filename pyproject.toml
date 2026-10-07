@@ -33,3 +33,6 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "jobagent/forms.py" = ["E501"]  # embedded JavaScript
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
