@@ -5,43 +5,83 @@ CV text is treated as untrusted. Contact details come from regexes; facts come f
 kept only if the quote the model gives as its source really appears in the CV and mentions the fact.
 """
 import re
+import zipfile
 from collections import Counter
 from pathlib import Path
 
 from jobagent import llm
 from jobagent.profile import ID_PREFIX, SCHEMA_VERSION, fact_errors, slug
-from jobagent.safety import looks_injected
+from jobagent.safety import is_sensitive, looks_injected
 
 MISSING = "Reading {} files needs the cv extra: pip install 'jobagent[cv]'"
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+PHONE = re.compile(r"\+?\d[\d ().\t-]{7,}\d")
 LINKEDIN = re.compile(r"(?:https?://)?(?:[\w-]+\.)?linkedin\.com/in/[\w%-]+", re.I)
 GITHUB = re.compile(r"(?:https?://)?(?:www\.)?github\.com/[\w-]+", re.I)
 MAX_CHARS = 20000
+MAX_BYTES = 5 * 1024 * 1024  # largest file read
+MAX_DOCX_BYTES = 50 * 1024 * 1024  # largest .docx once unzipped
+MAX_PAGES = 30
+HEADINGS = {"curriculum vitae", "curriculum", "resume", "cv", "resumen", "hoja de vida"}
 MIN_QUOTE = 4  # characters left after normalising; shorter quotes would match anywhere
 
 
+class CVParseError(ValueError):
+    """The CV file can't be used; the message says why in one line."""
+
+
+def _read_pdf(path):
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    if reader.is_encrypted:
+        raise CVParseError("The PDF is encrypted; save an unprotected copy and use that.")
+    if len(reader.pages) > MAX_PAGES:
+        raise CVParseError(f"The PDF has more than {MAX_PAGES} pages; use a shorter CV.")
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _read_docx(path):
+    import docx
+
+    with zipfile.ZipFile(path) as z:
+        if sum(i.file_size for i in z.infolist()) > MAX_DOCX_BYTES:
+            raise CVParseError(f"The .docx is over {MAX_DOCX_BYTES // 2**20} MB uncompressed; refusing to open it.")
+    doc = docx.Document(str(path))
+    cells = [c.text for t in doc.tables for row in t.rows for c in row.cells]
+    return "\n".join([p.text for p in doc.paragraphs] + cells)
+
+
 def extract_text(path):
-    """Plain text of a .pdf, .docx or .txt file. PDF and DOCX need the `cv` extra."""
+    """Plain text of a .pdf, .docx or .txt file. PDF and DOCX need the `cv` extra.
+
+    Raises CVParseError (a ValueError) for a file that is too large, damaged, encrypted or without text."""
     path = Path(path)
     ext = path.suffix.lower()
-    if ext == ".txt":
-        return path.read_text(encoding="utf-8", errors="replace")
-    if ext == ".pdf":
-        try:
-            from pypdf import PdfReader
-        except ImportError as e:
-            raise RuntimeError(MISSING.format(".pdf")) from e
-        return "\n".join(page.extract_text() or "" for page in PdfReader(str(path)).pages)
-    if ext == ".docx":
-        try:
-            import docx
-        except ImportError as e:
-            raise RuntimeError(MISSING.format(".docx")) from e
-        doc = docx.Document(str(path))
-        cells = [c.text for t in doc.tables for row in t.rows for c in row.cells]
-        return "\n".join([p.text for p in doc.paragraphs] + cells)
-    raise ValueError(f"Unsupported file type {ext or path.name!r}; use .pdf, .docx or .txt")
+    if ext not in (".txt", ".pdf", ".docx"):
+        raise ValueError(f"Unsupported file type {ext or path.name!r}; use .pdf, .docx or .txt")
+    if path.stat().st_size > MAX_BYTES:
+        raise CVParseError(f"The file is too large (over {MAX_BYTES // 2**20} MB).")
+    try:
+        if ext == ".txt":
+            with open(path, "rb") as f:
+                text = f.read(MAX_BYTES).decode("utf-8", errors="replace")
+        else:
+            try:
+                module = "pypdf" if ext == ".pdf" else "docx"
+                __import__(module)
+            except ImportError as e:
+                raise RuntimeError(MISSING.format(ext)) from e
+            text = _read_pdf(path) if ext == ".pdf" else _read_docx(path)
+    except CVParseError:
+        raise
+    except RuntimeError:
+        raise
+    except Exception as e:  # parsers raise many kinds of errors on damaged files
+        raise CVParseError(f"Could not read the {ext[1:].upper()} file ({type(e).__name__}).") from e
+    if not text.strip():
+        raise CVParseError("The file has no text found; scanned PDFs are not supported.")
+    return text
 
 
 def _norm(text):
@@ -59,18 +99,31 @@ def _url(match):
     return match.group() if match.group().startswith("http") else "https://" + match.group()
 
 
+def _is_phone(match):
+    """At least 9 digits, and not a run of years such as "2019 - 2023 - 2024"."""
+    s = match.group()
+    groups = [g for g in re.split(r"[\s().-]+", s.strip("+ ")) if g]
+    return sum(c.isdigit() for c in s) >= 9 and not all(re.fullmatch(r"(19|20)\d\d", g) for g in groups)
+
+
+def redact(text):
+    """The text without emails, phone numbers and lines about ids, banking or birth dates: what the LLM gets."""
+    text = EMAIL.sub("[email]", text)
+    text = PHONE.sub(lambda m: "[phone]" if _is_phone(m) else m.group(), text)
+    return "\n".join("[line removed]" if is_sensitive(ln) else ln for ln in text.splitlines())
+
+
 def _contact(text):
     out = {}
-    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    lines = (ln.strip() for ln in text.splitlines())
+    first = next((ln for ln in lines if ln and _norm(ln) not in HEADINGS), "")
     words = first.split()
     if 2 <= len(words) <= 3 and all(w.replace("-", "").isalpha() for w in words):
         out["first_name"], out["last_name"] = words[0], " ".join(words[1:])
     if m := EMAIL.search(text):
         out["email"] = m.group()
-    for m in PHONE.finditer(text):
-        if sum(c.isdigit() for c in m.group()) >= 9:
-            out["phone"] = m.group().strip()
-            break
+    if m := next(filter(_is_phone, PHONE.finditer(text)), None):
+        out["phone"] = m.group().strip()
     if m := LINKEDIN.search(text):
         out["linkedin"] = _url(m)
     if m := GITHUB.search(text):
@@ -150,7 +203,8 @@ def _fact(raw, haystack, used, log):
         fact["id"], n = f"{base}-{n}", n + 1
     bullets = []
     for b in raw.get("bullets") if kind == "experience" and isinstance(raw.get("bullets"), list) else []:
-        text = " ".join(b["source"][:MAX_QUOTE].split()) if isinstance(b, dict) and isinstance(b.get("source"), str) else ""
+        source = b.get("source") if isinstance(b, dict) else None
+        text = " ".join(source[:MAX_QUOTE].split()) if isinstance(source, str) else ""
         if _quote(text, haystack):
             bullets.append({"id": f"{fact['id']}.b{len(bullets) + 1}", "text": text})
     if bullets:
@@ -162,7 +216,7 @@ def _fact(raw, haystack, used, log):
     return fact, None
 
 
-def draft_from_text(text, use_llm=True, log=print):
+def draft_from_text(text, use_llm=True, log=print, model=None):
     """A v2 profile draft: contact details by regex and, with `use_llm`, facts the LLM found in the text."""
     draft = {"version": SCHEMA_VERSION, **_contact(text), "facts": []}
     if not use_llm:
@@ -172,10 +226,11 @@ def draft_from_text(text, use_llm=True, log=print):
         log(f"The CV text looks like a prompt injection ({', '.join(reasons)}); skipping the LLM step, "
             "only contact details were read.")
         return draft
-    if len(text) > MAX_CHARS:
+    sent = redact(text)
+    if len(sent) > MAX_CHARS:
         log(f"The CV is long: only the first {MAX_CHARS} characters are sent to the LLM (truncated).")
     try:
-        items = llm.extract_cv_facts(text[:MAX_CHARS])
+        items = llm.extract_cv_facts(sent[:MAX_CHARS], model)
     except llm.LLMError as e:
         log(f"Could not ask the LLM for facts ({e}); only contact details were read.")
         return draft

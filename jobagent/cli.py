@@ -309,7 +309,7 @@ def demo(headless=False, dry_run=False):
     return run
 
 
-def setup_mode(root=ROOT, from_cv=None, use_llm=True):
+def setup_mode(root=ROOT, from_cv=None, use_llm=True, yes=False):
     """--setup: interview that writes profile.yaml. The starting draft is the CV given with --from-cv or, if
     there is none, the existing profile (v1 or v2)."""
     path = root / "profile.yaml"
@@ -317,14 +317,16 @@ def setup_mode(root=ROOT, from_cv=None, use_llm=True):
         return setup.setup(path, setup.load_draft(path), input, print)
     try:
         text = cvparse.extract_text(from_cv)
-    except (RuntimeError, ValueError, OSError) as e:
+    except (RuntimeError, ValueError, OSError) as e:  # ValueError includes CVParseError
         sys.exit(str(e))
     config = root / "config.yaml"
     cfg = yaml.safe_load(config.read_text(encoding="utf-8")) or {} if config.exists() else {}
     llm.configure(cfg.get("llm", {}))
-    if use_llm:
-        log("The text of the CV goes to the configured LLM backend to propose facts (--no-llm skips this).")
-    return setup.setup(path, cvparse.draft_from_text(text, use_llm, log), input, print)
+    if use_llm and not yes:
+        question = f"Send CV text (contact data redacted) to the LLM backend {llm.backend()}? [y/N] "
+        use_llm = input(question).strip().lower() in setup.YES
+    return setup.setup(path, cvparse.draft_from_text(text, use_llm, log, (cfg.get("llm") or {}).get("form_model")),
+                       input, print)
 
 
 LIVE_MIN_PASS_RATE = 0.9
@@ -375,15 +377,18 @@ def main():
     ap.add_argument("--setup", action="store_true", help="create or upgrade profile.yaml by answering questions")
     ap.add_argument("--from-cv", metavar="PATH", help="with --setup: start from a .pdf, .docx or .txt CV")
     ap.add_argument("--no-llm", action="store_true", help="with --from-cv: read contact details only, no LLM call")
+    ap.add_argument("--yes", action="store_true", help="with --from-cv: send the redacted CV text without asking")
     ap.add_argument("--headless", action="store_true", help="with --demo: don't show the browser")
     args = ap.parse_args()
+    if (args.no_llm or args.yes) and not args.from_cv:
+        ap.error("--no-llm and --yes only make sense with --from-cv")
     if args.demo:
         demo(args.headless, args.dry_run)
         return
     if args.eval:
         sys.exit(eval_mode(args.live))
     if args.setup or args.from_cv:
-        setup_mode(from_cv=args.from_cv, use_llm=not args.no_llm)
+        setup_mode(from_cv=args.from_cv, use_llm=not args.no_llm, yes=args.yes)
         return
     if os.environ.get("JOBAGENT_LLM") == "fake":
         sys.exit("JOBAGENT_LLM=fake is only allowed with --demo or --eval: "

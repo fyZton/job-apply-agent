@@ -24,6 +24,7 @@ from jobagent.safety import (
     strip_sensitive,
     validate_answers,
     validate_score,
+    wrap_cv,
     wrap_fields,
     wrap_posting,
 )
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULTS = {
     "backend": "claude",
+    "form_model": "sonnet",  # also reads the CV in --setup --from-cv
     "api_models": {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"},
     "prices_usd_per_mtok": {"claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.0, 10.0]},
     "max_cost_usd_per_run": 1.0,  # null in config.yaml turns the cost limit off
@@ -346,17 +348,18 @@ Reply ONLY with JSON: {reply}"""
     return validate_answers(raw, fields)
 
 
-def extract_cv_facts(text, model="sonnet"):
+def extract_cv_facts(text, model=None):
     """Facts found in CV text, each with a `source` quote copied from it, or None. The caller must check
     that every quote really is in the text. Under the fake backend nothing is extracted."""
     if backend() == "fake":
         return []
+    model = model or _cfg["form_model"]
     prompt = f"""{DATA_RULE}
 
 Extract the facts a job application can rely on from this CV. Copy, never infer: only what the text says.
 
 CV:
-{wrap_posting(text)}
+{wrap_cv(text)}
 
 Reply ONLY with JSON: {{"facts": [ITEM, ...]}} where each ITEM has "kind" and a "source": a short quote copied
 exactly from the CV that supports it. Kinds and their fields:
