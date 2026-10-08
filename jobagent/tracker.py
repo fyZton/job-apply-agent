@@ -15,6 +15,14 @@ SHEET = "Applications"
 LINK_COL = COLUMNS.index("Link")
 
 
+FORMULA_STARTS = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def _safe_cell(value):
+    """Prefixes text a spreadsheet would read as a formula (= + - @, tab, CR) with a single quote."""
+    return "'" + value if isinstance(value, str) and value.startswith(FORMULA_STARTS) else value
+
+
 def today():
     return dt.date.today().isoformat()
 
@@ -81,9 +89,8 @@ class Tracker:
 
     def add_row(self, row):
         """row: dict keyed by COLUMNS (Date is filled in here)."""
-        row = {**row, "Date": today()}
-        self.pending.append(row)
         self.excel_keys.add(offer_key(row.get("Link")))
+        self.pending.append({**{k: _safe_cell(v) for k, v in row.items()}, "Date": today()})
         self._flush()
 
     def _backup(self):
