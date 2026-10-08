@@ -187,3 +187,140 @@
   field: {id: a, type: radio, question: "Do you have 2+ years with Python and Kubernetes?", options: ["Yes", "No"]}
   llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
   expect: {unanswered: true}
+
+# One claim check for every field type (round 4). Python is 3 years, SQL 2, English B2.
+
+- id: honesty-number-skill-in-parentheses-rejected
+  field: {id: a, type: number, question: "Years of experience (Django)"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-number-skill-first-rejected
+  field: {id: a, type: number, question: "Django - years of experience"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-number-skill-after-colon-rejected
+  field: {id: a, type: number, question: "Years: Kubernetes"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-number-missing-skill-zero-accepted
+  field: {id: a, type: number, question: "Kubernetes (years)"}
+  llm_reply: {answers: {a: {value: "0", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "0"}
+
+- id: honesty-months-missing-skill-rejected
+  field: {id: a, type: number, question: "How long have you worked with Kubernetes? (in months)"}
+  llm_reply: {answers: {a: {value: "36", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-months-over-limit-rejected
+  field: {id: a, type: number, question: "How long have you worked with Python? (in months)"}
+  llm_reply: {answers: {a: {value: "48", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-months-within-limit-accepted
+  field: {id: a, type: number, question: "How long have you worked with Python? (in months)"}
+  llm_reply: {answers: {a: {value: "24", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "24"}
+
+- id: honesty-number-not-plain-rejected
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: {value: "1e1", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-two-skills-one-missing-rejected
+  field: {id: a, type: number, question: "How many years of experience do you have with Python and Kubernetes?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-two-skills-limit-is-the-lowest
+  field: {id: a, type: number, question: "How many years of experience do you have with Python and SQL?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-textarea-claims-unknown-skill-rejected
+  field: {id: a, type: textarea, question: "Describe your experience with Kubernetes"}
+  llm_reply: {answers: {a: {value: "I have 7 years of Kubernetes experience running clusters", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-textarea-years-above-skill-rejected
+  field: {id: a, type: textarea, question: "Tell us about yourself"}
+  llm_reply: {answers: {a: {value: "I have 10 years of Python experience", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-textarea-years-within-skill-accepted
+  field: {id: a, type: textarea, question: "Tell us about yourself"}
+  llm_reply: {answers: {a: {value: "I have 3 years of Python experience", facts: [skill.python]}}, unknown: []}
+  expect: {contains: Python}
+
+- id: honesty-radio-know-unknown-skill-rejected
+  field: {id: a, type: radio, question: "Do you know Kubernetes?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-radio-proficient-unknown-skill-rejected
+  field: {id: a, type: radio, question: "Are you proficient in Kubernetes?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-radio-used-unknown-skill-rejected
+  field: {id: a, type: radio, question: "Have you used Kubernetes professionally?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-radio-used-unknown-skill-no-accepted
+  field: {id: a, type: radio, question: "Have you used Kubernetes professionally?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "No", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "No"}
+
+- id: honesty-select-rating-unknown-skill-rejected
+  field: {id: a, type: select, question: "Rate your Kubernetes experience", options: ["None", "Beginner", "Expert"]}
+  llm_reply: {answers: {a: {value: "Expert", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-select-rating-unknown-skill-none-accepted
+  field: {id: a, type: select, question: "Rate your Kubernetes experience", options: ["None", "Beginner", "Expert"]}
+  llm_reply: {answers: {a: {value: "None", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "None"}
+
+- id: honesty-language-not-in-profile-rejected
+  field: {id: a, type: select, question: "What is your proficiency in German?", options: ["None", "Basic", "Native or bilingual"]}
+  llm_reply: {answers: {a: {value: "Native or bilingual", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-language-above-profile-level-rejected
+  field: {id: a, type: select, question: "What is your proficiency in English?", options: ["Limited working proficiency", "Professional working proficiency"]}
+  llm_reply: {answers: {a: {value: "Professional working proficiency", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-language-within-profile-level-accepted
+  field: {id: a, type: select, question: "What is your proficiency in English?", options: ["Limited working proficiency", "Professional working proficiency"]}
+  llm_reply: {answers: {a: {value: "Limited working proficiency", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "Limited working proficiency"}
+
+- id: honesty-degree-not-in-profile-rejected
+  field: {id: a, type: radio, question: "Do you have a Master's degree?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-certification-not-in-profile-rejected
+  field: {id: a, type: radio, question: "Are you AWS certified?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-generic-years-within-best-skill-accepted
+  field: {id: a, type: number, question: "How many years of experience do you have?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "3"}
+
+- id: honesty-work-authorization-still-answered
+  field: {id: a, type: radio, question: "Are you legally authorized to work in the United States?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "Yes"}
+
+- id: honesty-notice-period-still-answered
+  field: {id: a, type: number, question: "How long is your notice period? (days)"}
+  llm_reply: {answers: {a: {value: "15", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "15"}

@@ -68,7 +68,8 @@ cp config.example.yaml config.yaml     # boards, limits, searches
 cp profile.example.yaml profile.yaml   # your data; the LLM answers only from here (or run --setup)
 python -m jobagent --login             # log in once; sessions are kept in ~/.jobagent/browser
 python -m jobagent --dry-run           # does everything except submitting
-python -m jobagent
+python -m jobagent                     # every board enabled in config.yaml
+python -m jobagent --only linkedin     # one board only (any enabled or not; ignores the other sites)
 ```
 
 `config.yaml`, `profile.yaml`, `cv/` and `data/` are git-ignored, so personal data stays on your machine.
@@ -105,21 +106,14 @@ Kinds are `skill` (with `years`), `cert`, `experience` (with `start`, `end` as `
 
 Why ids:
 
-- **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`. Only an answer that claims
-  experience has to cite: a years question in a number, text or text area field must come back with the ids it
-  relies on, as `{"value": "3", "facts": ["skill.python"]}`. A years question is one of three kinds. If it
-  names a profile skill, the cited facts must include that skill and the answer cannot be above its years (the
-  best of them if it names several). If it names something that is not a profile skill (`Rust`, `Kubernetes`,
-  also in `years of Rust experience` or `worked with Rust`), only `0` is accepted. If it names nothing (`years of
-  experience`, `¿cuántos años de experiencia tienes?`), any cited skill fact will do and the limit is the
-  largest years among the cited skill facts. A plain `0` needs no citation. Salary, notice period, city and similar fields need no citation (the
-  fixed answers and the profile values cover them), and a free-text answer may cite nothing when it uses no fact.
-  Any cited id that doesn't exist rejects the answer, and a rejected field goes to manual review. A version 2
-  profile with no skill facts sends every years question to manual review and logs one warning. The years check
-  described under [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without
-  facts keeps the old behavior. Select, radio and checkbox fields need no citation, but a yes to them is checked: a years
-  threshold in the question (`at least 5 years`, `3+`, `más de 5 años`) must be within the same years limit, and a claim of
-  experience with something (`experience with X`, `familiar with X`, `experiencia con X`) must name a profile skill. A no always passes.
+- **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`. A years question in a
+  number, text or text area field must come back with the ids it relies on, as
+  `{"value": "3", "facts": ["skill.python"]}`: the cited facts need the skill the question names (any skill when it
+  names none) and the answer cannot be above their years. A plain `0` needs no citation, and neither do other
+  fields: fixed answers and profile values cover salary, notice period or city. A cited id that doesn't exist
+  rejects the answer, and a rejected field goes to manual review. A version 2 profile with no skill facts sends
+  every years question to manual review and logs one warning. Whether an answer is allowed at all is decided by
+  the [honesty rule](#prompt-injection-defense), which reads the same facts.
 - **CV generation.** The planned CV generator will pick and reorder facts by id, so a tailored CV can only
   contain what is in the profile.
 
@@ -168,7 +162,7 @@ CV. A fact is kept only if the quote is in the CV text and contains the fact's n
 match `chemistry` or `C++`). Every number or date the model claims, such as years, a year, start and end dates or a
 language level, must also be in the quote; one that is not is left out, logged as `unverified`, and the rest of the
 fact is kept. A years value must be a number from 0 to 60 written next to `year`, `years`, `yr`, `yrs` or `años`
-in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years.
+in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years. The number must also sit next to that skill's name (up to 5 words before or 3 after, never past a comma, semicolon or closing parenthesis), so in `Python, Java (8 years)` Java gets 8 and Python gets none.
 Quotes must match at word boundaries, so `Java 5 years` is not backed by `RxJava 5 years`. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
 log by reason (not backed by the CV, or invalid).
 
@@ -251,18 +245,27 @@ Job postings and form labels are written by third parties and end up in the prom
    text areas). For a select or radio, the model's value is first
    resolved to the exact option that will be filled (the option must equal it, start with it or contain it as whole
    words; two candidates, such as `Yes` against `Yes, 5+ years` and `Yes, less than 2 years`, count as no match), and
-   every check below runs on that option. A years-of-experience answer (also one read from the cache, and also in
-   select, radio and checkbox fields) is rejected if it is above the limit of the question: the profile's years for
-   the skill it names, 0 when it names something that is not in the profile, or the profile's best skill when it
-   names nothing. For a number or text answer the largest number counts ("5+" is 5, "5-7" is 7); for an option its
-   own lower bound counts ("3-5" is 3, "Less than 1" is 0, "Más de 3" is 3). A rejected field is left for you to
-   fill in by hand. A select counts as a years question when its options contain years (`5+ years`). An option
-   is a yes when its first word is yes/y/sí/si/true (or a checked checkbox) and a no when it is no/none/ninguno/
-   ninguna/false. A yes, or an option that is neither, claims the number in its own text (`Yes, 5+ years`) or,
-   if it has none, the question's threshold (`at least 5 years`, "more than N" needs N+1), and is rejected above
-   the limit. If the question names technologies (`2+ years with Python and Kubernetes`) or asks for experience
-   with something, every one must be a profile skill with at least those years. A no is accepted only when its
-   text has no number. A cached answer with no number is dropped.
+   every check below runs on that option.
+   **The honesty rule.** One check, `jobagent/claims.py`, runs on the resolved answer of every field type
+   (number, text, text area, select, radio, checkbox) and for every source: fixed rule, learned cache and model.
+   A claim about any technology, language, degree or certificate must be backed by a fact. When the question names
+   something that is not in the profile, only 0 / No / None is accepted. Anything unclear goes to manual review.
+   In detail:
+   - Technologies are read from the question (and from the chosen option, if it has a number), after removing
+     question words and generic nouns; a multi-word skill matches by whole-word prefix (`REST APIs` is `REST APIs
+     and integrations`). Every technology left must be a profile skill, and every named skill needs at least the
+     years claimed. A question that names none is limited by the profile's best skill.
+   - The claim is the number in the answer (a number field must be a plain decimal; `3-5` claims 3, `5+` claims 5,
+     `Less than 1` claims nothing, months count /12), a yes (the question's threshold, such as `at least 5 years`,
+     or just "the skill exists"), or a proficiency word (beginner to expert). No / 0 / none claims nothing.
+   - A text or text area answer is also scanned: `7 years of Kubernetes`, `Python (3 years)` or `worked with X`
+     must name profile skills with at least those years.
+   - A language the question names must be a `language` fact, and the level claimed (A1 to C2, or basic,
+     conversational, professional, fluent, native) cannot be above the fact's. A yes to a degree or certificate
+     question needs an `education` or `cert` fact of that level.
+   A rejected field is left for you to fill in by hand. Known cost: a question with an unusual word the check
+   cannot tell from a technology (`Do you have experience working in a fintech?`) is sent to manual review
+   instead of being answered.
    With facts in the profile,
    a years-of-experience answer must also cite the skill fact it relies on (see
    [Profile and facts](#profile-and-facts)). A score whose CV name isn't one of the configured files is rejected too.
@@ -317,7 +320,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 38 | 38 | 100% |
+| honesty | 65 | 65 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

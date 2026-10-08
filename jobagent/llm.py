@@ -317,8 +317,9 @@ def answer_fields(fields, profile_text, offer, model, raw=None, facts=None):
     cite them. `raw`, if given, stands in for the model reply (the evals use it to test validation); it still
     goes through validate_answers."""
     if facts:
-        years_rule = ('For "years of experience with X" use the years of the fact for X in FACTS; if X is not '
-                      "there and is not clearly equivalent to a fact, answer 0.")
+        years_rule = ('For "years of experience with X" use the years of the fact for X in FACTS. If a skill, '
+                      "language, degree or certificate the question asks about is not in FACTS, answer 0 / No / "
+                      "None. Never map one technology to another (Django is not Python).")
         profile_block = f"""{_without_sensitive(profile_text, drop=("facts",))}
 FACTS (the only experience you may claim; cite their ids):
 {facts_prompt(facts)}"""

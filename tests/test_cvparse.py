@@ -554,3 +554,20 @@ def test_demo_interrupted_before_the_run_exists_does_not_crash(monkeypatch):
     monkeypatch.setattr(cli, "Run", interrupted)
     monkeypatch.setattr(cli, "log", lambda *_: None)
     assert cli.demo(headless=True) is None
+
+
+
+# --- years must sit next to the skill they belong to (review round 4) -------------------------------------------
+
+@pytest.mark.parametrize("quote, python, java", [
+    ("Python, Java (8 years)", None, 8),
+    ("Python (3 years), Java (8 years)", 3, 8),
+    ("Python 3 years, Java", 3, None),
+    ("3 years of Python, Java", 3, None),
+    ("Python: 3 years, Java", 3, None),
+])
+def test_years_belong_to_the_skill_they_are_next_to(monkeypatch, quote, python, java):
+    items = [{"kind": "skill", "name": n, "years": 3 if n == "Python" else 8, "source": quote}
+             for n in ("Python", "Java")]
+    facts = {f["name"]: f.get("years") for f in facts_for(monkeypatch, quote, items)}
+    assert facts == {"Python": python, "Java": java}

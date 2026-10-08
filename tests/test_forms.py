@@ -571,3 +571,145 @@ def test_option_is_resolved_before_the_honesty_checks(tmp_path, monkeypatch, typ
 ])
 def test_best_option_needs_word_boundaries_and_is_never_ambiguous(value, options, expected):
     assert best_option(value, options) == expected
+
+
+
+# --- one fail-closed claim check for every field type (review round 4) -----------------------------------------
+
+RICH = [
+    {"id": "skill.python", "kind": "skill", "name": "Python", "years": 3},
+    {"id": "skill.sql", "kind": "skill", "name": "SQL", "years": 2},
+    {"id": "skill.rest", "kind": "skill", "name": "REST APIs and integrations", "years": 2},
+    {"id": "lang.english", "kind": "language", "name": "English", "level": "B1"},
+    {"id": "lang.spanish", "kind": "language", "name": "Spanish", "level": "Native"},
+    {"id": "edu.eng", "kind": "education", "name": "Ingeniería en Sistemas", "org": "UCV", "year": 2022},
+    {"id": "cert.aws", "kind": "cert", "name": "AWS Cloud Practitioner", "year": 2024},
+]
+Y, N = True, False
+COUNTER = iter(range(10**6))
+
+
+def verdict(tmp_path, monkeypatch, type_, question, value, options=None, ids=("skill.python",)):
+    """True if the answer `value` is filled, False if it goes to manual review."""
+    fake_llm(monkeypatch, {"answers": {"a": value}, "facts": {"a": list(ids)}, "unknown": []})
+    folder = tmp_path / str(next(COUNTER))
+    folder.mkdir()
+    a = FormAssistant({**PROFILE, "facts": RICH}, "name: Alex", folder, "m", lambda *_: None)
+    f = field("a", question, type_, **({"options": options} if options else {}))
+    return "a" in a.decide([f], OFFER)[0]
+
+
+YEARS_OPTS_K = ["1 year", "2 years", "3 years", "5 years"]
+RATING = ["None", "Beginner", "Expert"]
+GERMAN = ["None", "Basic", "Native or bilingual"]
+ENGLISH = ["Elementary proficiency", "Limited working proficiency", "Professional working proficiency"]
+REPROS = [
+    ("number", "Years of experience (Django)", None, "3", N),
+    ("number", "Years of experience (Django)", None, "0", Y),
+    ("number", "Django - years of experience", None, "3", N),
+    ("number", "Django - years of experience", None, "0", Y),
+    ("number", "How many years have you used Django?", None, "2", N),
+    ("number", "How many years have you used Django?", None, "0", Y),
+    ("number", "Kubernetes (years)", None, "3", N),
+    ("number", "Kubernetes (years)", None, "0", Y),
+    ("number", "Years: Kubernetes", None, "3", N),
+    ("number", "Years: Kubernetes", None, "0", Y),
+    ("select", "Kubernetes", YEARS_OPTS_K, "3 years", N),
+    ("number", "How long have you worked with Kubernetes? (in months)", None, "36", N),
+    ("number", "How long have you worked with Kubernetes? (in months)", None, "0", Y),
+    ("number", "How long have you worked with Python? (in months)", None, "24", Y),
+    ("number", "How long have you worked with Python? (in months)", None, "48", N),
+    ("number", "Years of experience with Python?", None, "1e1", N),
+    ("number", "Years of experience with Python?", None, "0x10", N),
+    ("number", "How many years of experience do you have with Python and Kubernetes?", None, "3", N),
+    ("number", "How many years of experience do you have with Kubernetes and Python?", None, "3", N),
+    ("number", "How many years of experience do you have with Python and SQL?", None, "2", Y),
+    ("number", "How many years of experience do you have with Python and SQL?", None, "3", N),
+    ("textarea", "Describe your experience with Kubernetes", None,
+     "I have 7 years of Kubernetes experience running clusters", N),
+    ("textarea", "Tell us about yourself", None, "I have 3 years of Python experience", Y),
+    ("textarea", "Tell us about yourself", None, "I have 10 years of Python experience", N),
+    ("textarea", "Tell us about yourself", None, "I have 7 years of Kubernetes experience", N),
+    ("textarea", "Tell us about yourself", None, "I have worked with Kubernetes at scale", N),
+    ("textarea", "Tell us about yourself", None, "Python (3 years), SQL (2 years)", Y),
+    ("textarea", "Tell us about yourself", None, "Python (3 years), SQL (3 years)", N),
+    ("radio", "Do you have Kubernetes experience?", YES_NO, "Yes", N),
+    ("radio", "Do you have Kubernetes experience?", YES_NO, "No", Y),
+    ("radio", "Do you know Kubernetes?", YES_NO, "Yes", N),
+    ("radio", "Do you know Kubernetes?", YES_NO, "No", Y),
+    ("radio", "Are you proficient in Kubernetes?", YES_NO, "Yes", N),
+    ("radio", "Are you proficient in Kubernetes?", YES_NO, "No", Y),
+    ("radio", "Have you used Kubernetes professionally?", YES_NO, "Yes", N),
+    ("radio", "Have you used Kubernetes professionally?", YES_NO, "No", Y),
+    ("radio", "Have you used Python professionally?", YES_NO, "Yes", Y),
+    ("radio", "Do you have Python experience?", YES_NO, "Yes", Y),
+    ("select", "Rate your Kubernetes experience", RATING, "Expert", N),
+    ("select", "Rate your Kubernetes experience", RATING, "None", Y),
+    ("select", "Rate your Python experience", RATING, "Beginner", Y),
+    ("select", "What is your proficiency in German?", GERMAN, "Native or bilingual", N),
+    ("select", "What is your proficiency in German?", GERMAN, "None", Y),
+    ("radio", "Do you speak German?", YES_NO, "Yes", N),
+    ("radio", "Do you speak German?", YES_NO, "No", Y),
+    ("select", "What is your proficiency in English?", ENGLISH, "Professional working proficiency", N),
+    ("select", "What is your proficiency in English?", ENGLISH, "Limited working proficiency", Y),
+    ("select", "¿Cuál es tu nivel de inglés?", ["Básico", "Conversational", "Avanzado"], "Conversational", Y),
+    ("select", "¿Cuál es tu nivel de inglés?", ["Básico", "Conversational", "Avanzado"], "Avanzado", N),
+    ("select", "English level", ["Basic (A1-A2)", "Intermediate (B1-B2)", "Advanced (C1-C2)"],
+     "Basic (A1-A2)", Y),
+    ("select", "English level", ["Basic (A1-A2)", "Intermediate (B1-B2)", "Advanced (C1-C2)"],
+     "Intermediate (B1-B2)", N),  # the range reaches B2; the profile says B1
+    ("radio", "Are you fluent in English?", YES_NO, "Yes", N),
+    ("radio", "Do you speak English?", YES_NO, "Yes", Y),
+    ("radio", "Do you speak Spanish at a native level?", YES_NO, "Yes", Y),
+    ("radio", "Do you have a Master's degree?", YES_NO, "Yes", N),
+    ("radio", "Do you have a Master's degree?", YES_NO, "No", Y),
+    ("radio", "Do you have a Bachelor's degree?", YES_NO, "Yes", Y),
+    ("radio", "Do you have a PhD?", YES_NO, "Yes", N),
+    ("radio", "Are you AWS certified?", YES_NO, "Yes", Y),
+    ("radio", "Are you Azure certified?", YES_NO, "Yes", N),
+    ("radio", "Are you Azure certified?", YES_NO, "No", Y),
+    # regressions: ordinary questions are still answered
+    ("number", "How many years of experience do you have?", None, "3", Y),
+    ("number", "How many years of experience do you have?", None, "4", N),
+    ("number", "¿Cuántos años de experiencia tienes con Python?", None, "3", Y),
+    ("number", "How long is your notice period? (days)", None, "15", Y),
+    ("number", "Expected hourly rate in USD", None, "25", Y),
+    ("radio", "Are you legally authorized to work in the United States?", YES_NO, "Yes", Y),
+    ("text", "Country of residence", None, "Venezuela", Y),
+    ("radio", "Do you have experience working in a remote team?", YES_NO, "Yes", Y),
+]
+
+
+@pytest.mark.parametrize("type_, question, options, value, accepted", REPROS)
+def test_claim_check_covers_every_field_type(tmp_path, monkeypatch, type_, question, options, value, accepted):
+    assert verdict(tmp_path, monkeypatch, type_, question, value, options) is accepted
+
+
+def test_partial_skill_name_matches_the_whole_word_prefix(tmp_path, monkeypatch):
+    ids = ("skill.rest",)
+    assert verdict(tmp_path, monkeypatch, "number", "Years of experience with REST APIs?", "2", ids=ids)
+    assert not verdict(tmp_path, monkeypatch, "number", "Years of experience with REST APIs?", "3", ids=ids)
+
+
+def test_cached_and_rule_answers_get_the_same_check(tmp_path, monkeypatch):
+    rules = [{"pattern": "kubernetes", "value": "Yes"}]
+    a = FormAssistant({**PROFILE, "fixed_answers": rules, "facts": RICH}, "name: Alex", tmp_path, "m", lambda *_: None)
+    calls = fake_llm(monkeypatch, {"answers": {}, "unknown": []})
+    q = "Do you have Kubernetes experience?"
+    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])  # the rule is checked too
+    assert calls == []
+    b = FormAssistant({**PROFILE, "facts": RICH}, "name: Alex", tmp_path, "m", lambda *_: None)
+    b.cache[normalize(q)] = "Yes"
+    assert b.decide([field("a", q, "radio", options=YES_NO)], OFFER)[0] == {}
+
+
+def test_claim_ok_returns_a_reason(tmp_path):
+    a = FormAssistant({**PROFILE, "facts": RICH}, "name: Alex", tmp_path, "m", lambda *_: None)
+    ok, reason = a._claim_ok(field("a", "Kubernetes (years)", "number"), "Kubernetes (years)", "3")
+    assert not ok and "kubernetes" in reason
+    assert a._claim_ok(field("a", "Python (years)", "number"), "Python (years)", "3") == (True, "")
+
+
+def test_best_option_matches_accents_in_the_fuzzy_step():
+    assert best_option("Si", ["Sí", "No"]) == 0
+    assert best_option("Sí", ["Si", "No"]) == 0

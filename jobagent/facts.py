@@ -75,7 +75,7 @@ def facts_prompt(facts):
     return "\n".join(lines)
 
 
-def _names(name):
+def names_of(name):
     """The lowercase name and its aliases."""
     return _SYNONYMS.get(name, {name})
 
@@ -99,7 +99,7 @@ def match_skills(facts, question):
             continue
         name = f.text.lower()
         tokens = re.findall(r"[\w+#]+", name)
-        hit = (any(_in_question(n, q) for n in _names(name))
+        hit = (any(_in_question(n, q) for n in names_of(name))
                or len(tokens) > 1 and set(tokens) <= words)
         if hit and (name not in best or (f.years or 0) > (best[name].years or 0)):
             best[name] = f

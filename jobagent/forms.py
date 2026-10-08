@@ -5,8 +5,9 @@ import re
 from pathlib import Path
 
 from jobagent import llm
+from jobagent.claims import Claims, fold
 from jobagent.core import pause
-from jobagent.facts import check_citations, load_facts, match_skills
+from jobagent.facts import check_citations, load_facts
 from jobagent.safety import is_sensitive, looks_injected
 
 # Walks the visible fields inside `root`, tags each with a data-ap attribute and returns their description.
@@ -99,49 +100,7 @@ JS_SCAN = r"""
 
 PLACEHOLDER = re.compile(r"^(select|selecciona|seleccionar|choose|elige|escoge|--|-)", re.I)
 YEARS_QUESTION = re.compile(r"\byears?\b|\baños\b", re.I)
-# What a years question is about: the word after "with|in|of|using|on|con|en|de|usando" or before "experience".
-ABOUT = re.compile(r"\b(?:with|in|of|using|on|con|en|de|usando)\s+(?:(?:the|a|an|el|la|un|una)\s+)?([\w+#.-]+)"
-                   r"|([\w+#.-]+)\s+experience\b", re.I)
-NOT_A_SKILL = set(
-    "experience experiencia years year a\u00f1os a\u00f1o professional profesional total overall work working trabajo "
-    "relevant relevante industry the a an your tu su do you have tienes tiene how many much cu\u00e1ntos cuantos "
-    "field area role position puesto software development desarrollo programming programaci\u00f3n this that our "
-    "similar related of in".split())
-
-
-def _lower_bound(option):
-    """The least number of years an option claims: "3-5" is 3, "5+" is 5, "Less than 1" is 0, "M\u00e1s de 3" is 3.
-    None when the option has no number."""
-    text = str(option).lower()
-    m = re.search(r"\d+(?:[.,]\d+)?", text)
-    if not m:
-        return None
-    if re.search(r"less than|under|up to|menos de|hasta|<", text[:m.start()]):
-        return 0.0
-    return float(m.group().replace(",", "."))
-YES = {"yes", "y", "sí", "si", "true", "checked"}
-NO = {"no", "none", "ninguno", "ninguna", "false"}
-# What follows "with|in|of|using..." (lookahead, so "of experience with Python" also yields "Python").
-TECH_PHRASE = re.compile(r"(?=\b(?:with|in|of|using|on|con|en|de|del|usando)\s+"
-                         r"(?:(?:the|a|an|el|la|un|una)\s+)?([^?.]+))", re.I)
-TECH_SPLIT = re.compile(r",|&|/|\band\b|\by\b|\bor\b|\bo\b", re.I)
-WORD = re.compile(r"[\w+#.-]+")
-NUM = r"(\d+(?:[.,]\d+)?)"
-MORE_THAN = re.compile(r"(?:more than|over|m[aá]s de)\s*" + NUM, re.I)
-AT_LEAST = re.compile(r"(?:at least|minimum|m[ií]nimo)\s*" + NUM + r"|" + NUM + r"\s*\+?\s*(?:years?|yrs?|años?)\b", re.I)
-# "experience with X", "familiar with X", "conocimientos de X", "worked with X": X is what the answer claims.
-CLAIM_ABOUT = re.compile(r"\b(?:experience|experiencia|familiar|familiarity|knowledge|conocimientos?|worked|working|"
-                         r"trabajado|trabajaste)\s+(?:with|in|of|using|on|con|en|de|del)\s+"
-                         r"(?:(?:the|a|an|el|la|un|una)\s+)?([\w+#.-]+)", re.I)
 IS_CV = re.compile(r"resume|curr[ií]cul|\bcv\b|hoja de vida", re.I)
-
-
-def _threshold(text):
-    """The most years a question asks for ("at least 5 years", "7+ years", "mínimo 3 años"; "more than 5" is
-    6), or None when it names no number of years."""
-    nums = [float(m.replace(",", ".")) + 1 for m in MORE_THAN.findall(text)]
-    nums += [float((a or b).replace(",", ".")) for a, b in AT_LEAST.findall(text)]
-    return max(nums, default=None)
 
 
 def normalize(text):
@@ -166,8 +125,10 @@ def best_option(value, options):
         if hits:
             return hits[0] if len(hits) == 1 else None
     # 0.8 tolerates typos ("venezula") but not different words: at 0.5 "maybe" matched "yes".
-    close = difflib.get_close_matches(v, norm, n=1, cutoff=0.8)
-    return norm.index(close[0]) if close else None
+    # Accents are ignored here: "Si" finds "Sí".
+    folded = [fold(o) for o in norm]
+    close = difflib.get_close_matches(fold(v), folded, n=1, cutoff=0.8)
+    return folded.index(close[0]) if close else None
 
 
 def _set_checked(el, state):
@@ -208,6 +169,7 @@ class FormAssistant:
             self.cache = {}
         self.rules = [(re.compile(r["pattern"], re.I), r["value"]) for r in profile.get("fixed_answers", [])]
         self.facts = load_facts(profile)  # empty for a v1 profile: answers are then not checked against facts
+        self.claims = Claims(self.facts, profile.get("years_of_experience"))
         self.v2 = isinstance(profile.get("version"), int) and profile["version"] >= 2
         self._warned = False
 
@@ -226,119 +188,10 @@ class FormAssistant:
         i = best_option(value, options)
         return None if i is None else options[i]
 
-    def _years_scope(self, text, options=()):
-        """None if `text` is not a years question (or a v1 profile has no years). Otherwise (kind, names, limit):
-        "named" (it names profile skills: limit is the best of their years), "other" (it names something that
-        is not a profile skill: limit 0) or "generic" (names nothing: limit is the profile's best skill)."""
-        if not YEARS_QUESTION.search(text) and not YEARS_QUESTION.search(" ".join(map(str, options))):
-            return None
-        if self.facts:
-            skills = {f.text.lower(): float(f.years or 0) for f in self.facts.values() if f.kind == "skill"}
-            named = {f.text.lower(): float(f.years or 0) for f in match_skills(self.facts, text)}
-        else:
-            skills = {str(k).lower(): v for k, v in (self.profile.get("years_of_experience") or {}).items()
-                      if isinstance(v, int | float) and not isinstance(v, bool)}
-            if not skills:
-                return None
-            words = set(re.findall(r"\w+", text.lower()))
-            named = {k: v for k, v in skills.items() if set(k.split("_")) <= words}
-        if named:
-            return "named", set(named), max(named.values())
-        if any(not w.isdigit() and w not in NOT_A_SKILL
-               for w in (m.strip(".-").lower() for g in ABOUT.findall(text) for m in g if m)):
-            return "other", set(), 0.0
-        return "generic", set(), max(skills.values(), default=0.0)
-
-    @staticmethod
-    def _answer_kind(field, value):
-        """"yes", "no" or None (any other answer) for a select, radio or checkbox. The value is already the
-        resolved option; it is classified by its first normalized word: "Yes, I do" is a yes, "None" and
-        "No tengo" are a no."""
-        v = normalize(value)
-        if field["type"] == "checkbox" and v in ("true", "1", "checked"):
-            return "yes"
-        first = v.split(" ")[0]
-        if first in YES:
-            return "yes"
-        if first in NO:
-            return "no"
-        return None
-
-    @staticmethod
-    def _techs(text):
-        """The technologies a question names, as in "with Python and Kubernetes": the first phrase after
-        with/in/of/using... that does not start with a filler word, split on commas and "and"."""
-        def first_word(part):
-            return (WORD.findall(part) or [""])[0].strip(".-")
-
-        for m in TECH_PHRASE.finditer(text):
-            parts = TECH_SPLIT.split(m.group(1))
-            lead = first_word(parts[0]).lower()
-            if not lead or lead in NOT_A_SKILL or lead.isdigit():
-                continue
-            words = (first_word(p) for p in parts)
-            return [w for w in words if w and w.lower() not in NOT_A_SKILL and not w.isdigit()]
-        return []
-
-    def _overclaims(self, field, text, claimed, label, yes=True):
-        """True if a yes (or an option that is not a no) claims more than the profile: `claimed` years above the
-        limit of _years_scope, a technology the question names that is not a profile skill, or one with fewer
-        years than claimed."""
-        if claimed is not None:
-            scope = self._years_scope(text, field.get("options") or ())
-            if scope is not None and claimed > scope[2]:
-                self.log(f"{label!r} claims {claimed:g} years, above the profile's {scope[2]:g} "
-                         f"({', '.join(sorted(scope[1])) or scope[0]}); not used")
-                return True
-        if self.facts and (yes or claimed != 0) and (claimed is not None or CLAIM_ABOUT.search(text)):
-            for tech in self._techs(text):
-                years = [float(f.years or 0) for f in match_skills(self.facts, tech)]
-                if not years:
-                    self.log(f"{label!r} claims experience with {tech!r}, which is not in the profile; not used")
-                    return True
-                if claimed is not None and max(years) < claimed:
-                    self.log(f"{label!r} claims {claimed:g} years of {tech}, above the profile's {max(years):g}; "
-                             "not used")
-                    return True
-        return False
-
-    def _overstates_years(self, field, value, cached=False):
-        """True if a years-of-experience answer claims more than the profile does (see _years_scope). `value` is
-        the resolved value (see _resolve), so this judges what will be filled.
-
-        A number or text answer is compared by its largest number (so "5+" is 5 and "5-7" is 7). For a select,
-        radio or checkbox the claim is the option's own lower bound ("3-5" is 3, "Less than 1" is 0); an option
-        with no number claims the question's threshold ("at least 5 years"). A no passes only when its text has
-        no number. A yes or unclassified option is also checked against the technologies the question names
-        (each must be a profile skill with enough years). A cached answer with no number is dropped."""
-        text = f'{field.get("context", "")} {field["question"]}'
-        label = f'{str(value)[:30]} to {field["question"][:60]}'
-        if field.get("options") or field["type"] == "checkbox":
-            kind = self._answer_kind(field, value)
-            own = _lower_bound(value) if field.get("options") else None
-            if kind == "no" and own is None:
-                return False
-            claimed = own if own is not None else _threshold(text)
-            if claimed is None and kind is None and not CLAIM_ABOUT.search(text):
-                scope = self._years_scope(text, field.get("options") or ())
-                if scope is not None:
-                    self.log(f"years check skipped for {label!r}: no number in the option"
-                             + ("; cached answer dropped" if cached else ""))
-                return cached and scope is not None
-            return self._overclaims(field, text, claimed, label, yes=kind == "yes")
-        scope = self._years_scope(text)
-        if scope is None:
-            return False
-        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
-        claimed = max(numbers, default=None)
-        if claimed is None:
-            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}"
-                     + ("; cached answer dropped" if cached else ""))
-            return cached
-        if claimed > scope[2]:
-            self.log(f"years answer {claimed:g} is above the profile's {scope[2]:g} ({', '.join(sorted(scope[1])) or scope[0]}); not used")
-            return True
-        return False
+    def _claim_ok(self, field, question, value):
+        """(ok, reason): the one honesty check, run on the resolved value of every field type and every source
+        (rule, cache, model). See jobagent.claims."""
+        return self.claims.check(field, question, value)
 
     def _years_blocked(self, text):
         """A v2 profile with no skill facts has nothing to back a years answer: those questions go to manual
@@ -365,29 +218,24 @@ class FormAssistant:
             self.log(f"answer for {field['question'][:60]!r} cites unknown facts {unknown}; not used")
             return False
         text = f'{field.get("context", "")} {field["question"]}'
-        scope = self._years_scope(text)
-        if field["type"] not in ("number", "text", "textarea") or scope is None:
+        if field["type"] not in ("number", "text", "textarea") or not self.claims.years_q(text):
             return True
-        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
-        if numbers and max(numbers) == 0:
+        years = self.claims.stated_years(text, value)
+        if years == 0:
             return True
-        label = field["question"][:60]
-        kind, named, _ = scope
-        if kind == "other":
-            self.log(f"years answer for {label!r} asks about something that is not in the profile; "
-                     "only 0 is allowed")
-            return False
+        named = self.claims.named(text)
         skills = [self.facts[i] for i in cited if self.facts[i].kind == "skill"]
         if named:
-            skills = [f for f in skills if f.text.lower() in named]
+            skills = [f for f in skills if self.claims.key(f.text) in named]
         skills = [f for f in skills if f.years is not None]
+        label = field["question"][:60]
         if not skills:
             self.log(f"years answer for {label!r} cites no skill fact with years"
                      f"{' for ' + ', '.join(sorted(named)) if named else ''} (cited {cited}); not used")
             return False
         limit = max(f.years for f in skills)
-        if not numbers or max(numbers) > limit:
-            shown = f"{max(numbers):g}" if numbers else str(value)[:40]
+        if years is None or years > limit:
+            shown = f"{years:g}" if years is not None else str(value)[:40]
             self.log(f"years answer {shown} is above the cited facts {cited} ({limit:g}); not used")
             return False
         return True
@@ -424,8 +272,14 @@ class FormAssistant:
             cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
             rule, cached = self._resolve(f, rule), self._resolve(f, cached)
             if rule is not None:
-                answers[f["id"]] = rule
-            elif cached is not None and not self._overstates_years(f, cached, cached=True):
+                ok, reason = self._claim_ok(f, text, rule)
+                if ok:
+                    answers[f["id"]] = rule
+                else:
+                    self.log(f"fixed answer {str(rule)[:30]!r} to {f['question'][:60]!r}: {reason}; not used")
+                    if f["required"]:
+                        missing.append(f["question"])
+            elif cached is not None and self._claim_ok(f, text, cached)[0]:
                 answers[f["id"]] = cached
             elif sensitive:
                 if f["required"]:
@@ -447,8 +301,11 @@ class FormAssistant:
             cites = r.get("facts") or {}
             for f in pending:
                 value = self._resolve(f, llm_answers.get(f["id"]))
-                if (f["id"] in unknown or value is None or self._overstates_years(f, value)
-                        or not self._grounded(f, value, cites.get(f["id"]))):
+                ok, reason = (False, "") if value is None else self._claim_ok(
+                    f, f'{f.get("context", "")} {f["question"]}', value)
+                if reason:
+                    self.log(f"{str(value)[:30]!r} to {f['question'][:60]!r}: {reason}; not used")
+                if (f["id"] in unknown or not ok or not self._grounded(f, value, cites.get(f["id"]))):
                     if f["required"]:
                         missing.append(f["question"])
                     continue

@@ -5,6 +5,7 @@ CV text is treated as untrusted. Contact details come from regexes; facts come f
 kept only if the quote the model gives as its source really appears in the CV and mentions the fact.
 """
 import re
+import unicodedata
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -151,14 +152,41 @@ def _quote(value, haystack):
 
 # A number of years: "5 years", "5+ years", "years 5". _norm turns "años" into "a os" and a decimal comma into
 # a space, so "1,5 years" has no number here (the lookbehind skips the "5") and is left out rather than read as 5.
-_YEARS_WORD = r"(?:years?|yrs?|a os?)"
+_YEARS_WORD = r"(?:years?|yrs?|a os?|anos?)"
 YEARS_IN_QUOTE = re.compile(rf"(?<!\d)(?<!\d )(\d{{1,2}})\+?\s*{_YEARS_WORD}\b|\b{_YEARS_WORD}\s+(\d{{1,2}})(?!\d)")
 MAX_YEARS = 60
 
 
-def _number_in(value, q):
-    """The value is a number of years (0 to 60) written next to a years word in the quote."""
-    numbers = {float(a or b) for a, b in YEARS_IN_QUOTE.findall(q)}
+def _near(name, source):
+    """The text on each side of `name` in the raw quote that its years may come from: up to 5 words before
+    and 3 after, never past a comma, semicolon, line break or closing parenthesis. "Python, Java
+    (8 years)" gives Java its 8 years, not Python."""
+    text = "".join(c for c in unicodedata.normalize("NFKD", source.lower()) if unicodedata.category(c) != "Mn")
+    seq = []  # words; None where a clause ends
+    for tok in re.findall(r"[()]|[^\s()]+", re.sub(r"\s*\n\s*", " ; ", text)):
+        seq += _norm(tok).split()
+        if tok == ")" or tok[-1] in ",;":
+            seq.append(None)
+    words = _norm(name).split()
+    sides = []
+    for i in range(len(seq) - len(words) + 1):
+        if seq[i:i + len(words)] == words:
+            before, after = [], []
+            for w in reversed(seq[:i]):
+                if w is None or len(before) == 5:
+                    break
+                before.insert(0, w)
+            for w in seq[i + len(words):]:
+                if w is None or len(after) == 3:
+                    break
+                after.append(w)
+            sides += [" ".join(before), " ".join(after)]
+    return sides
+
+
+def _number_in(value, sides):
+    """The value is a number of years (0 to 60) written next to a years word in one of the `sides`."""
+    numbers = {float(a or b) for side in sides for a, b in YEARS_IN_QUOTE.findall(side)}
     return (isinstance(value, int | float) and not isinstance(value, bool) and 0 <= value <= MAX_YEARS
             and float(value) in numbers)
 
@@ -175,9 +203,9 @@ def _date_in(value, q):
             or 1 <= int(m[2]) <= 12 and _has(MONTHS[int(m[2]) - 1], re.sub(r"(?<=[a-z]{3})[a-z]+", "", q)))
 
 
-def _verified(key, value, q):
+def _verified(key, value, q, name, source):
     if key == "years":
-        return _number_in(value, q)
+        return _number_in(value, _near(name, source))
     if key == "year":
         return isinstance(value, int) and not isinstance(value, bool) and _has(str(value), q)
     if key in ("start", "end"):
@@ -203,7 +231,7 @@ def _fact(raw, haystack, used, log):
         fact[key] = raw[key].strip()
     for key in CHECKED[kind]:
         if key in raw:
-            if _verified(key, raw[key], q):
+            if _verified(key, raw[key], q, fact[MAIN[kind][0]], raw["source"]):
                 fact[key] = raw[key].strip() if isinstance(raw[key], str) else raw[key]
             else:
                 log(f"unverified: {key} of {fact[MAIN[kind][0]]!r} is not in its quote, left out")
