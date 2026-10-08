@@ -511,3 +511,63 @@ def test_years_blocked_log_does_not_mention_version(tmp_path, monkeypatch):
     a = FormAssistant({"version": 2, "facts": []}, "name: Alex", tmp_path, "m", logs.append)
     a.decide([field("a", "Years of experience with Python?", "number")], OFFER)
     assert any("no skill facts" in m for m in logs) and not any("version 2" in m for m in logs)
+
+
+# --- what is checked is what is filled: the value is resolved to the exact option first -----------------------
+
+Q5 = "Do you have at least 5 years of experience with Python?"
+QPY = "Do you have Python experience?"
+OPT_CASES = [
+    ("radio", Q5, ["Yes, I do", "No, I don't"], "Yes, I do", None),
+    ("radio", Q5, ["Yes, I do", "No, I don't"], "No, I don't", "No, I don't"),
+    ("radio", Q5, ["Sí, tengo", "No tengo"], "Sí, tengo", None),
+    ("radio", Q5, ["Sí, tengo", "No tengo"], "No tengo", "No tengo"),
+    ("select", Q5, ["Select", "Yes, I do", "No"], "Yes, I do", None),
+    ("select", Q5, ["Select", "Yes, I do", "No"], "No", "No"),
+    ("radio", Q5, YES_NO, "Yes.", None),
+    ("radio", Q5, YES_NO, "No.", "No"),
+    ("radio", "Do you have at least 2 years of experience with Python?", YES_NO, "Yes.", "Yes"),
+    ("radio", QPY, ["Yes, 5+ years", "Yes, less than 2 years", "No"], "Yes", None),
+    ("radio", QPY, ["Yes, 5+ years", "Yes, less than 2 years", "No"], "Yes, 5+ years", None),
+    ("radio", QPY, ["Yes, 5+ years", "Yes, less than 2 years", "No"], "Yes, less than 2 years",
+     "Yes, less than 2 years"),
+    ("select", "How many years of Python experience do you have?",
+     ["Advanced knowledge (5+ years)", "Basic (1-2 years)", "None"], "No", None),
+    ("select", "How many years of Python experience do you have?",
+     ["Advanced knowledge (5+ years)", "Basic (1-2 years)", "None"], "None", "None"),
+    ("select", "Which best describes your backend experience?",
+     ["Select an option", "5+ years with Node.js", "Less than 1 year"], "No", None),
+    ("radio", "Do you have 2+ years with Python and Kubernetes?", YES_NO, "Yes", None),
+    ("radio", "Do you have 2+ years with Python and Kubernetes?", YES_NO, "No", "No"),
+    ("radio", "Do you have 1+ years with Python?", YES_NO, "Yes", "Yes"),
+]
+
+
+@pytest.mark.parametrize("years", [1, 3])
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("type_, question, options, value, expected", OPT_CASES)
+def test_option_is_resolved_before_the_honesty_checks(tmp_path, monkeypatch, type_, question, options, value,
+                                                      expected, cached, years):
+    a = claimer(tmp_path, years)
+    if cached:
+        a.cache[normalize(question)] = value
+        fake_llm(monkeypatch, {"answers": {}, "unknown": ["a"]})
+    else:
+        fake_llm(monkeypatch, {"answers": {"a": value}, "unknown": []})
+    answers, _ = a.decide([field("a", question, type_, options=options)], OFFER)
+    if years == 1 and "at least 2 years" in question:
+        expected = None  # one year of Python does not back "at least 2 years"
+    assert answers.get("a") == expected
+
+
+@pytest.mark.parametrize("value, options, expected", [
+    ("no", ["Select", "5+ years with Node.js", "Less than 1 year"], None),
+    ("no", ["Advanced knowledge", "Conocimiento"], None),
+    ("No", ["Advanced knowledge (5+ years)", "Basic (1-2 years)", "None"], None),
+    ("Yes", ["Yes, 5+ years", "Yes, less than 2 years", "No"], None),
+    ("Yes.", ["Yes", "No"], 0),
+    ("Yes, I do", ["Yes", "No"], 0),
+    ("Basic", ["Basic (A2)", "Fluent"], 0),
+])
+def test_best_option_needs_word_boundaries_and_is_never_ambiguous(value, options, expected):
+    assert best_option(value, options) == expected

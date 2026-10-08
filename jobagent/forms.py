@@ -120,7 +120,12 @@ def _lower_bound(option):
         return 0.0
     return float(m.group().replace(",", "."))
 YES = {"yes", "y", "sí", "si", "true", "checked"}
-NO = {"no", "false", "0"}
+NO = {"no", "none", "ninguno", "ninguna", "false"}
+# What follows "with|in|of|using..." (lookahead, so "of experience with Python" also yields "Python").
+TECH_PHRASE = re.compile(r"(?=\b(?:with|in|of|using|on|con|en|de|del|usando)\s+"
+                         r"(?:(?:the|a|an|el|la|un|una)\s+)?([^?.]+))", re.I)
+TECH_SPLIT = re.compile(r",|&|/|\band\b|\by\b|\bor\b|\bo\b", re.I)
+WORD = re.compile(r"[\w+#.-]+")
 NUM = r"(\d+(?:[.,]\d+)?)"
 MORE_THAN = re.compile(r"(?:more than|over|m[aá]s de)\s*" + NUM, re.I)
 AT_LEAST = re.compile(r"(?:at least|minimum|m[ií]nimo)\s*" + NUM + r"|" + NUM + r"\s*\+?\s*(?:years?|yrs?|años?)\b", re.I)
@@ -144,15 +149,22 @@ def normalize(text):
 
 
 def best_option(value, options):
-    """Index of the option that best matches `value` (exact, then substring, then fuzzy), or None."""
+    """Index of the option that best matches `value`, or None. Order: exact (normalized), then a match on word
+    boundaries (one starts with the other, then one contains the other as whole words), then fuzzy. A step with
+    more than one hit is ambiguous and returns None, so "no" never lands inside "knowledge" or "Node.js" and
+    "Yes" never picks one of "Yes, 5+ years" / "Yes, less than 2 years"."""
     v = normalize(value)
+    if not v:
+        return None
     norm = [normalize(o) for o in options]
     for i, o in enumerate(norm):
         if o == v:
             return i
-    for i, o in enumerate(norm):
-        if v and (v in o or o in v) and o:
-            return i
+    for hit in (lambda o: o.startswith(v + " ") or v.startswith(o + " "),
+                lambda o: f" {v} " in f" {o} " or f" {o} " in f" {v} "):
+        hits = [i for i, o in enumerate(norm) if o and hit(o)]
+        if hits:
+            return hits[0] if len(hits) == 1 else None
     # 0.8 tolerates typos ("venezula") but not different words: at 0.5 "maybe" matched "yes".
     close = difflib.get_close_matches(v, norm, n=1, cutoff=0.8)
     return norm.index(close[0]) if close else None
@@ -202,10 +214,17 @@ class FormAssistant:
     def _save_cache(self):
         self.cache_path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=1), encoding="utf-8")
 
-    def _valid(self, field, value):
-        if field.get("options"):
-            return best_option(value, field["options"]) is not None
-        return value not in (None, "")
+    @staticmethod
+    def _resolve(field, value):
+        """What apply_answers will fill: for a select or radio, the exact text of the option best_option picks
+        (None if there is none); otherwise the value itself (None if empty). Every check runs on this."""
+        if value in (None, ""):
+            return None
+        options = field.get("options")
+        if not options:
+            return value
+        i = best_option(value, options)
+        return None if i is None else options[i]
 
     def _years_scope(self, text, options=()):
         """None if `text` is not a years question (or a v1 profile has no years). Otherwise (kind, names, limit):
@@ -232,59 +251,86 @@ class FormAssistant:
 
     @staticmethod
     def _answer_kind(field, value):
-        """"yes", "no" or None (any other answer). A checkbox value of True/1 is a yes; for a select or radio,
-        the first option of a Yes/No pair counts as yes when the value is that option."""
-        v = str(value).strip().lower()
-        if field["type"] == "checkbox" and v in ("true", "1"):
+        """"yes", "no" or None (any other answer) for a select, radio or checkbox. The value is already the
+        resolved option; it is classified by its first normalized word: "Yes, I do" is a yes, "None" and
+        "No tengo" are a no."""
+        v = normalize(value)
+        if field["type"] == "checkbox" and v in ("true", "1", "checked"):
             return "yes"
-        if v in YES:
+        first = v.split(" ")[0]
+        if first in YES:
             return "yes"
-        if v in NO:
+        if first in NO:
             return "no"
-        options = [normalize(o) for o in field.get("options") or []]
-        if len(options) == 2 and options[1] in NO and v == options[0]:
-            return "yes"
         return None
 
-    def _overclaims(self, field, text):
-        """True if a yes to this question claims more than the profile: a years threshold above the limit of
-        _years_scope, or experience with something that is not a profile skill."""
-        label = field["question"][:60]
-        need = _threshold(text)
-        if need is not None:
+    @staticmethod
+    def _techs(text):
+        """The technologies a question names, as in "with Python and Kubernetes": the first phrase after
+        with/in/of/using... that does not start with a filler word, split on commas and "and"."""
+        def first_word(part):
+            return (WORD.findall(part) or [""])[0].strip(".-")
+
+        for m in TECH_PHRASE.finditer(text):
+            parts = TECH_SPLIT.split(m.group(1))
+            lead = first_word(parts[0]).lower()
+            if not lead or lead in NOT_A_SKILL or lead.isdigit():
+                continue
+            words = (first_word(p) for p in parts)
+            return [w for w in words if w and w.lower() not in NOT_A_SKILL and not w.isdigit()]
+        return []
+
+    def _overclaims(self, field, text, claimed, label, yes=True):
+        """True if a yes (or an option that is not a no) claims more than the profile: `claimed` years above the
+        limit of _years_scope, a technology the question names that is not a profile skill, or one with fewer
+        years than claimed."""
+        if claimed is not None:
             scope = self._years_scope(text, field.get("options") or ())
-            if scope is not None and need > scope[2]:
-                self.log(f"yes to {label!r} claims {need:g} years, above the profile's {scope[2]:g} "
+            if scope is not None and claimed > scope[2]:
+                self.log(f"{label!r} claims {claimed:g} years, above the profile's {scope[2]:g} "
                          f"({', '.join(sorted(scope[1])) or scope[0]}); not used")
                 return True
-            return False
-        m = CLAIM_ABOUT.search(text)
-        if m and self.facts and m.group(1).lower() not in NOT_A_SKILL and not match_skills(self.facts, m.group(1)):
-            self.log(f"yes to {label!r} claims experience with {m.group(1)!r}, which is not in the profile; not used")
-            return True
+        if self.facts and (yes or claimed != 0) and (claimed is not None or CLAIM_ABOUT.search(text)):
+            for tech in self._techs(text):
+                years = [float(f.years or 0) for f in match_skills(self.facts, tech)]
+                if not years:
+                    self.log(f"{label!r} claims experience with {tech!r}, which is not in the profile; not used")
+                    return True
+                if claimed is not None and max(years) < claimed:
+                    self.log(f"{label!r} claims {claimed:g} years of {tech}, above the profile's {max(years):g}; "
+                             "not used")
+                    return True
         return False
 
     def _overstates_years(self, field, value, cached=False):
-        """True if a years-of-experience answer claims more than the profile does (see _years_scope).
+        """True if a years-of-experience answer claims more than the profile does (see _years_scope). `value` is
+        the resolved value (see _resolve), so this judges what will be filled.
 
-        A number or text answer is compared by its largest number (so "5+" is 5 and "5-7" is 7). For a select or
-        radio, the chosen option's lower bound is used ("3-5" is 3, "Less than 1" is 0). A yes (radio, select or
-        checkbox) is checked by _overclaims; a no always passes. A cached answer with no number is dropped."""
+        A number or text answer is compared by its largest number (so "5+" is 5 and "5-7" is 7). For a select,
+        radio or checkbox the claim is the option's own lower bound ("3-5" is 3, "Less than 1" is 0); an option
+        with no number claims the question's threshold ("at least 5 years"). A no passes only when its text has
+        no number. A yes or unclassified option is also checked against the technologies the question names
+        (each must be a profile skill with enough years). A cached answer with no number is dropped."""
         text = f'{field.get("context", "")} {field["question"]}'
-        kind = self._answer_kind(field, value)
-        if kind == "no":
-            return False
-        if kind == "yes" and field["type"] in ("radio", "select", "checkbox"):
-            return self._overclaims(field, text)
-        scope = self._years_scope(text, field.get("options") or ())
+        label = f'{str(value)[:30]} to {field["question"][:60]}'
+        if field.get("options") or field["type"] == "checkbox":
+            kind = self._answer_kind(field, value)
+            own = _lower_bound(value) if field.get("options") else None
+            if kind == "no" and own is None:
+                return False
+            claimed = own if own is not None else _threshold(text)
+            if claimed is None and kind is None and not CLAIM_ABOUT.search(text):
+                scope = self._years_scope(text, field.get("options") or ())
+                if scope is not None:
+                    self.log(f"years check skipped for {label!r}: no number in the option"
+                             + ("; cached answer dropped" if cached else ""))
+                return cached and scope is not None
+            return self._overclaims(field, text, claimed, label, yes=kind == "yes")
+        scope = self._years_scope(text)
         if scope is None:
             return False
-        options = field.get("options")
-        if options and (i := best_option(value, options)) is not None:
-            claimed = _lower_bound(options[i])
-        else:
-            numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
-            claimed = max(numbers, default=None)
+        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
+        claimed = max(numbers, default=None)
         if claimed is None:
             self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}"
                      + ("; cached answer dropped" if cached else ""))
@@ -376,9 +422,10 @@ class FormAssistant:
                     missing.append(f["question"])
                 continue
             cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
-            if rule is not None and self._valid(f, rule):
+            rule, cached = self._resolve(f, rule), self._resolve(f, cached)
+            if rule is not None:
                 answers[f["id"]] = rule
-            elif cached is not None and self._valid(f, cached) and not self._overstates_years(f, cached, cached=True):
+            elif cached is not None and not self._overstates_years(f, cached, cached=True):
                 answers[f["id"]] = cached
             elif sensitive:
                 if f["required"]:
@@ -399,8 +446,8 @@ class FormAssistant:
             llm_answers = r.get("answers") or {}
             cites = r.get("facts") or {}
             for f in pending:
-                value = llm_answers.get(f["id"])
-                if (f["id"] in unknown or not self._valid(f, value) or self._overstates_years(f, value)
+                value = self._resolve(f, llm_answers.get(f["id"]))
+                if (f["id"] in unknown or value is None or self._overstates_years(f, value)
                         or not self._grounded(f, value, cites.get(f["id"]))):
                     if f["required"]:
                         missing.append(f["question"])
@@ -424,7 +471,7 @@ class FormAssistant:
                     if i is not None:
                         _set_checked(root.locator(f'[data-ap="{f["id"]}_{i}"]'), True)
                 elif f["type"] == "checkbox":
-                    check = str(value).lower() in ("true", "1", "yes", "sí", "si")
+                    check = str(value).lower() in ("true", "1", "checked", "yes", "sí", "si")
                     _set_checked(root.locator(f'[data-ap="{f["id"]}"]'), check)
                 elif f["type"] == "select":
                     i = best_option(value, f["options"])

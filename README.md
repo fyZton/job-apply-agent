@@ -248,14 +248,21 @@ Job postings and form labels are written by third parties and end up in the prom
 3. **Output validation.** Whatever the model returns is checked before use. A score must be an integer from 1 to
    10, and the CV name must be one of the configured files. Form answers are kept only for field ids that
    exist, values must be plain strings, numbers or booleans, and text is capped at 200 characters (2000 for
-   text areas). A years-of-experience answer (also one read from the cache, and also in select, radio and
-   checkbox fields) is rejected if it is above the limit of the question: the profile's years for the skill it names, 0
-   when it names something that is not in the profile, or the profile's best skill when it names nothing. For
-   a number or text answer the largest number counts ("5+" is 5, "5-7" is 7); for a select or radio option its
-   lower bound counts ("3-5" is 3, "Less than 1" is 0, "Más de 3" is 3). A rejected field is left for you to
-   fill in by hand. A select counts as a years question when its options contain years (`5+ years`). A yes to a
-   select, radio or checkbox is rejected when the question asks for more years than the limit ("more than N" needs N+1) or for
-   experience with something that is not a profile skill; a no is always accepted. A cached answer with no number is dropped.
+   text areas). For a select or radio, the model's value is first
+   resolved to the exact option that will be filled (the option must equal it, start with it or contain it as whole
+   words; two candidates, such as `Yes` against `Yes, 5+ years` and `Yes, less than 2 years`, count as no match), and
+   every check below runs on that option. A years-of-experience answer (also one read from the cache, and also in
+   select, radio and checkbox fields) is rejected if it is above the limit of the question: the profile's years for
+   the skill it names, 0 when it names something that is not in the profile, or the profile's best skill when it
+   names nothing. For a number or text answer the largest number counts ("5+" is 5, "5-7" is 7); for an option its
+   own lower bound counts ("3-5" is 3, "Less than 1" is 0, "Más de 3" is 3). A rejected field is left for you to
+   fill in by hand. A select counts as a years question when its options contain years (`5+ years`). An option
+   is a yes when its first word is yes/y/sí/si/true (or a checked checkbox) and a no when it is no/none/ninguno/
+   ninguna/false. A yes, or an option that is neither, claims the number in its own text (`Yes, 5+ years`) or,
+   if it has none, the question's threshold (`at least 5 years`, "more than N" needs N+1), and is rejected above
+   the limit. If the question names technologies (`2+ years with Python and Kubernetes`) or asks for experience
+   with something, every one must be a profile skill with at least those years. A no is accepted only when its
+   text has no number. A cached answer with no number is dropped.
    With facts in the profile,
    a years-of-experience answer must also cite the skill fact it relies on (see
    [Profile and facts](#profile-and-facts)). A score whose CV name isn't one of the configured files is rejected too.
@@ -310,7 +317,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 15 | 15 | 100% |
+| honesty | 38 | 38 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

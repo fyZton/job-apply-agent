@@ -187,13 +187,13 @@ class Run:
             if self.llm_failures >= 3:
                 raise LLMUnavailable()
             return
-        self.llm_failures = 0
         fit = ev["fit"]
         offer.company = offer.company or ev.get("company", "")
         offer.title = offer.title or ev.get("title", "")
         reason = ev.get("reason", "")
         log(f"{mod.LABEL}: {offer.title} | {offer.company} -> fit {fit}. {reason}")
         if fit < self.cfg["min_fit"]:
+            self.llm_failures = 0
             self.tracker.mark(k, "low_fit", fit=fit, title=offer.title, reason=reason)
             self.summary[site, "discarded"] += 1
             return
@@ -203,8 +203,14 @@ class Run:
         cv_path = self.cv_dir / cv_name
         try:
             result, note = mod.apply(page, offer, cv_path, self.assistant, self.dry_run)
+            self.llm_failures = 0
         except (SessionExpired, llm.BudgetExceeded, llm.ConfigError, StopRequested):
             raise
+        except llm.LLMTransient as e:  # the model failed while filling the form: counts like a failed score
+            self.llm_failures += 1
+            if self.llm_failures >= 3:
+                raise LLMUnavailable() from None
+            result, note = "error", f"LLMTransient: {str(e)[:150]}"
         except Exception as e:
             result, note = "error", f"{type(e).__name__}: {str(e)[:150]}"
         if result in ("manual", "error"):

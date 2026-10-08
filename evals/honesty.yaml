@@ -130,3 +130,60 @@
   field: {id: a, type: select, question: "How much experience do you have with Kubernetes?", options: ["None", "1-2 years", "5+ years"]}
   llm_reply: {answers: {a: {value: "None", facts: []}}, unknown: []}
   expect: {answer: "None"}
+
+# The value is resolved to the exact option that will be filled before any check.
+
+- id: honesty-option-yes-i-do-rejected
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Yes, I do", "No, I don't"]}
+  llm_reply: {answers: {a: {value: "Yes, I do", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-no-i-dont-accepted
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Yes, I do", "No, I don't"]}
+  llm_reply: {answers: {a: {value: "No, I don't", facts: []}}, unknown: []}
+  expect: {answer: "No, I don't"}
+
+- id: honesty-option-spanish-si-tengo-rejected
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Sí, tengo", "No tengo"]}
+  llm_reply: {answers: {a: {value: "Sí, tengo", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-spanish-no-tengo-accepted
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Sí, tengo", "No tengo"]}
+  llm_reply: {answers: {a: {value: "No tengo", facts: []}}, unknown: []}
+  expect: {answer: "No tengo"}
+
+- id: honesty-option-select-placeholder-yes-rejected
+  field: {id: a, type: select, question: "Do you have at least 5 years of experience with Python?", options: ["Select", "Yes, I do", "No"]}
+  llm_reply: {answers: {a: {value: "Yes, I do", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-yes-with-period-rejected
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes.", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-ambiguous-yes-not-filled
+  field: {id: a, type: radio, question: "Do you have Python experience?", options: ["Yes, 5+ years", "Yes, less than 2 years", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-less-than-2-accepted
+  field: {id: a, type: radio, question: "Do you have Python experience?", options: ["Yes, 5+ years", "Yes, less than 2 years", "No"]}
+  llm_reply: {answers: {a: {value: "Yes, less than 2 years", facts: []}}, unknown: []}
+  expect: {answer: "Yes, less than 2 years"}
+
+- id: honesty-option-no-does-not-match-advanced
+  field: {id: a, type: select, question: "How many years of Python experience do you have?", options: ["Advanced knowledge (5+ years)", "Basic (1-2 years)", "None"]}
+  llm_reply: {answers: {a: {value: "No", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-option-no-does-not-match-nodejs
+  field: {id: a, type: select, question: "Which best describes your backend experience?", options: ["Select an option", "5+ years with Node.js", "Less than 1 year"]}
+  llm_reply: {answers: {a: {value: "No", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-python-and-unknown-skill-rejected
+  field: {id: a, type: radio, question: "Do you have 2+ years with Python and Kubernetes?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {unanswered: true}
