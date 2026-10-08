@@ -169,7 +169,7 @@ class FormAssistant:
             self.cache = {}
         self.rules = [(re.compile(r["pattern"], re.I), r["value"]) for r in profile.get("fixed_answers", [])]
         self.facts = load_facts(profile)  # empty for a v1 profile: answers are then not checked against facts
-        self.claims = Claims(self.facts, profile.get("years_of_experience"))
+        self.claims = Claims(self.facts, profile.get("years_of_experience"), profile)
         self.v2 = isinstance(profile.get("version"), int) and profile["version"] >= 2
         self._warned = False
 

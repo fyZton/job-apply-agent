@@ -571,3 +571,26 @@ def test_years_belong_to_the_skill_they_are_next_to(monkeypatch, quote, python, 
              for n in ("Python", "Java")]
     facts = {f["name"]: f.get("years") for f in facts_for(monkeypatch, quote, items)}
     assert facts == {"Python": python, "Java": java}
+
+
+@pytest.mark.parametrize("text, item, missing", [
+    ("Languages: Spanish (native), English (A2)\n",
+     {"kind": "language", "name": "English", "level": "native", "source": "Languages: Spanish (native), English (A2)"},
+     "level"),
+    ("English B1, German C2\n",
+     {"kind": "language", "name": "English", "level": "C2", "source": "English B1, German C2"}, "level"),
+    ("PMP 2015, AWS Cloud Practitioner 2023\n",
+     {"kind": "cert", "name": "PMP", "year": 2023, "source": "PMP 2015, AWS Cloud Practitioner 2023"}, "year"),
+])
+def test_level_and_year_must_be_next_to_the_fact_name(monkeypatch, text, item, missing):
+    logs = []
+    (fact,) = facts_for(monkeypatch, text, [item], logs)
+    assert missing not in fact and any(f"unverified: {missing}" in m for m in logs)
+
+
+def test_level_and_year_next_to_the_name_are_kept(monkeypatch):
+    text = "English B1, German C2\nPMP 2015, AWS Cloud Practitioner 2023\n"
+    facts = facts_for(monkeypatch, text, [
+        {"kind": "language", "name": "German", "level": "C2", "source": "English B1, German C2"},
+        {"kind": "cert", "name": "PMP", "year": 2015, "source": "PMP 2015, AWS Cloud Practitioner 2023"}])
+    assert facts[0]["level"] == "C2" and facts[1]["year"] == 2015

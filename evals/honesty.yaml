@@ -291,8 +291,8 @@
   expect: {unanswered: true}
 
 - id: honesty-language-above-profile-level-rejected
-  field: {id: a, type: select, question: "What is your proficiency in English?", options: ["Limited working proficiency", "Professional working proficiency"]}
-  llm_reply: {answers: {a: {value: "Professional working proficiency", facts: [skill.python]}}, unknown: []}
+  field: {id: a, type: select, question: "What is your proficiency in English?", options: ["Limited working proficiency", "Native or bilingual"]}
+  llm_reply: {answers: {a: {value: "Native or bilingual", facts: [skill.python]}}, unknown: []}
   expect: {unanswered: true}
 
 - id: honesty-language-within-profile-level-accepted
@@ -324,3 +324,195 @@
   field: {id: a, type: number, question: "How long is your notice period? (days)"}
   llm_reply: {answers: {a: {value: "15", facts: [skill.python]}}, unknown: []}
   expect: {answer: "15"}
+
+# Round 5: anything other than No / 0 / None must be backed by the profile, in the question and in the answer.
+# Candidate: Python 3, SQL 2, Software development 3 years, English B2; no Kubernetes, Go, Rust, AWS, French, German, degree.
+- id: honesty-r5-yes-can-you-work-with-kubernetes
+  field: {"id": "a", "type": "radio", "question": "Can you work with Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-have-you-managed-kubernetes-clusters-in-
+  field: {"id": "a", "type": "radio", "question": "Have you managed Kubernetes clusters in production?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-do-you-have-a-kubernetes-background
+  field: {"id": "a", "type": "radio", "question": "Do you have a Kubernetes background?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-do-you-have-hands-on-kubernetes
+  field: {"id": "a", "type": "radio", "question": "Do you have hands-on Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-kubernetes
+  field: {"id": "a", "type": "radio", "question": "Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-can-you-code-in-go
+  field: {"id": "a", "type": "radio", "question": "Can you code in Go?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-have-you-programmed-in-rust
+  field: {"id": "a", "type": "radio", "question": "Have you programmed in Rust?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-are-you-able-to-write-terraform
+  field: {"id": "a", "type": "radio", "question": "Are you able to write Terraform?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-have-you-deployed-to-aws
+  field: {"id": "a", "type": "radio", "question": "Have you deployed to AWS?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-do-you-hold-the-cka
+  field: {"id": "a", "type": "radio", "question": "Do you hold the CKA?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-are-you-a-pmp
+  field: {"id": "a", "type": "radio", "question": "Are you a PMP?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-do-you-hold-an-aws-certification
+  field: {"id": "a", "type": "radio", "question": "Do you hold an AWS certification?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-es-has-trabajado-con-kubernetes
+  field: {"id": "a", "type": "radio", "question": "¿Has trabajado con Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-es-sabes-kubernetes
+  field: {"id": "a", "type": "radio", "question": "¿Sabes Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-es-manejas-kubernetes
+  field: {"id": "a", "type": "radio", "question": "¿Manejas Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-es-dominas-kubernetes
+  field: {"id": "a", "type": "radio", "question": "¿Dominas Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-yes-do-you-have-a-bachelor-s-degree-in-medic
+  field: {"id": "a", "type": "radio", "question": "Do you have a bachelor's degree in Medicine?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-label-number
+  field: {"id": "a", "type": "number", "question": "Kubernetes"}
+  llm_reply: {"answers": {"a": {"value": "4", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-label-text-years
+  field: {"id": "a", "type": "text", "question": "Kubernetes"}
+  llm_reply: {"answers": {"a": {"value": "4 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-label-checkbox
+  field: {"id": "a", "type": "checkbox", "question": "Kubernetes"}
+  llm_reply: {"answers": {"a": {"value": true, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-skills-list
+  field: {"id": "a", "type": "textarea", "question": "List your main technical skills"}
+  llm_reply: {"answers": {"a": {"value": "Rust, Go, Kubernetes, Terraform", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-certs-list
+  field: {"id": "a", "type": "textarea", "question": "Which certifications do you hold?"}
+  llm_reply: {"answers": {"a": {"value": "AWS Solutions Architect Professional, PMP", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-0
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Python for 9 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-1
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Ten years of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-2
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I built Kubernetes operators in Go.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-3
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hold a PhD in Computer Science.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-4
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I speak fluent German.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-free-5
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I am a certified Kubernetes administrator.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-french-scale
+  field: {"id": "a", "type": "select", "question": "Rate your French (1-5)", "options": ["1", "2", "3", "4", "5"]}
+  llm_reply: {"answers": {"a": {"value": "5", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-german-very-well
+  field: {"id": "a", "type": "text", "question": "How well do you speak German?"}
+  llm_reply: {"answers": {"a": {"value": "Very well", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-english-excellent
+  field: {"id": "a", "type": "text", "question": "Your English proficiency?"}
+  llm_reply: {"answers": {"a": {"value": "Excellent", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5-ok-python-yes
+  field: {"id": "a", "type": "radio", "question": "Can you work with Python?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r5-ok-python-experience
+  field: {"id": "a", "type": "radio", "question": "Do you have Python experience?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r5-ok-english-professional
+  field: {"id": "a", "type": "select", "question": "What is your proficiency in English?", "options": ["Limited working proficiency", "Professional working proficiency"]}
+  llm_reply: {"answers": {"a": {"value": "Professional working proficiency", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Professional working proficiency"}
+
+- id: honesty-r5-ok-english-upper-intermediate
+  field: {"id": "a", "type": "text", "question": "How would you describe your spoken English?"}
+  llm_reply: {"answers": {"a": {"value": "Upper intermediate", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Upper intermediate"}
+
+- id: honesty-r5-ok-about-yourself
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have 3 years of Python experience building SQL reports.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have 3 years of Python experience building SQL reports."}
+
+- id: honesty-r5-ok-skills-years
+  field: {"id": "a", "type": "textarea", "question": "List your skills"}
+  llm_reply: {"answers": {"a": {"value": "Python (3 years), SQL (2 years)", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Python (3 years), SQL (2 years)"}
+
+- id: honesty-r5-ok-kubernetes-no
+  field: {"id": "a", "type": "radio", "question": "Can you work with Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "No", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "No"}

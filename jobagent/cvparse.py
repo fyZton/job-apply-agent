@@ -206,11 +206,13 @@ def _date_in(value, q):
 def _verified(key, value, q, name, source):
     if key == "years":
         return _number_in(value, _near(name, source))
-    if key == "year":
-        return isinstance(value, int) and not isinstance(value, bool) and _has(str(value), q)
     if key in ("start", "end"):
         return _date_in(value, q)
-    return isinstance(value, str) and _has(value, q)  # org, level
+    # year, org, level: next to the fact's name, like its years, not anywhere in the quote
+    sides = _near(name, source)
+    if key == "year":
+        return isinstance(value, int) and not isinstance(value, bool) and any(_has(str(value), s) for s in sides)
+    return isinstance(value, str) and any(_has(value, s) for s in sides)
 
 
 def _fact(raw, haystack, used, log):
