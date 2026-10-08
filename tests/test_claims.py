@@ -119,3 +119,26 @@ def test_language_level_above_the_fact_is_rejected():
     assert not verdict("Your English level?", "Fluent", "text")
     assert not verdict("Anything else?", "My English is native.", "textarea")
     assert verdict("Anything else?", "My English is intermediate.", "textarea")
+
+
+@pytest.mark.parametrize("answer, ok", [
+    ("I have used kubernetes and terraform daily.", False),
+    ("mostly python and sql", True),
+    ("i know rust, go and kafka", False),
+    ("I write rust code", False),
+    ("ten years of golang", False),
+    ("experience with c++ and .net", False),
+    ("I like go-karts and I make coffee", True),
+    ("we go to the market, then make dinner", True),
+    ("I use docker and python", True),
+    ("sparks of joy", True),
+])
+def test_lowercase_technology_names_in_free_text(answer, ok):
+    assert verdict("Anything else?", answer, "textarea") is ok
+
+
+def test_lowercase_city_answer_and_topic_questions():
+    assert verdict("Current city", "caracas", "text")
+    assert not verdict("Current city", "kubernetes", "text")
+    assert verdict("Do you have a Kubernetes background?", "kubernetes", "text") is False
+    assert verdict("Do you use terraform at work?", "we use terraform every day at the office", "text")

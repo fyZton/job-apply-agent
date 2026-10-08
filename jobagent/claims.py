@@ -9,6 +9,7 @@ import re
 import unicodedata
 
 from jobagent.facts import names_of
+from jobagent.known_tech import AMBIGUOUS, CUES, KNOWN_TECH
 
 NUM = r"(\d+(?:[.,]\d+)?)"
 TOKEN = re.compile(r"[a-z0-9+#]+(?:[.\-][a-z0-9+#]+)*")
@@ -275,6 +276,35 @@ ORDINAL = re.compile(r"\d+(?:st|nd|rd|th|k|m|h|d|x)")
 SENTENCE_START = re.compile(r"\s*(?:[,;]|$|(?:is|are|was|and|for|es|y|para)\b)")
 
 
+_NAMES = "|".join(re.escape(t) for t in sorted(KNOWN_TECH, key=len, reverse=True))
+TECH_RX = re.compile(r"(?<![\w+#.-])(" + _NAMES + r")(?![\w+#]|-\w)")
+
+
+def known_tech(raw):
+    """KNOWN_TECH names in an answer, case ignored. Ambiguous ones ("go", "make", "rust") count only when
+    capitalised in mid-sentence, next to a cue such as "language" or "code", or in a list with other names."""
+    text = unicodedata.normalize("NFKC", raw)
+    low = text.lower()
+    hits = list(TECH_RX.finditer(low))
+    firm = {m.start() for m in hits if m.group() not in AMBIGUOUS}
+    out = []
+    for m in hits:
+        name, a, b = m.group(), m.start(), m.end()
+        if name in AMBIGUOUS:
+            near = re.findall(r"[a-z]+", low[max(0, a - 20):a])[-1:] + re.findall(r"[a-z]+", low[b:b + 20])[:1]
+            before = text[:a].rstrip()
+            cap = text[a].isupper() and bool(before) and before[-1] not in ".!?"
+            listed = (re.search(r",\s*$", low[:a]) and any(x < a and low[x:a].count(" ") <= 2 for x in firm)
+                      or re.match(r"\s*,\s*(?:and\s+|or\s+)?(\S+)", low[b:]) and any(
+                          b < x < b + 20 for x in firm)
+                      or re.match(r"\s*(?:and|or|y|o)\s+(\S+)", low[b:]) and any(b < x < b + 12 for x in firm)
+                      or re.search(r"(?:and|or|y|o)\s+$", low[:a]) and any(a - 14 < x < a for x in firm))
+            if not (cap or listed or CUES & set(near)):
+                continue
+        out.append(name)
+    return out
+
+
 def _tech_like(word, start, after):
     """The word of a free-text answer looks like a technology or proper name: letters with digits or + # .,
     CamelCase, ALL-CAPS, or a capitalised word that does not just start a sentence."""
@@ -517,6 +547,10 @@ class Claims:
         profile does not back. Each technology-like word must be a skill, be in the question, or be in the
         profile; anything else is rejected. ponytail: a lowercase unknown technology ("kubernetes") is not seen."""
         v = spell(fold(raw))
+        for name in known_tech(raw):  # lowercase names count too, on every question
+            matched, unmatched = self.resolve([TOKEN.findall(name)])
+            if left := self._unbacked(unmatched, f"{t} {v}", t):
+                return f"the answer names {' '.join(left)!r}, which is not in the profile"
         for run in [] if topic else answer_runs(raw):  # a place or a name answers a non-claim topic
             matched, unmatched = self.resolve([run])
             if left := self._unbacked(unmatched, f"{t} {v}", t):

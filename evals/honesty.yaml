@@ -516,3 +516,19 @@
   field: {"id": "a", "type": "radio", "question": "Can you work with Kubernetes?", "options": ["Yes", "No"]}
   llm_reply: {"answers": {"a": {"value": "No", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "No"}
+
+# Lowercase technology names in a free-text answer need a profile skill behind them.
+- id: honesty-r5b-lowercase-tech-rejected
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have used kubernetes and terraform daily.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r5b-lowercase-profile-tech-accepted
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "mostly python and sql", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "mostly python and sql"}
+
+- id: honesty-r5b-lowercase-city-accepted
+  field: {"id": "a", "type": "text", "question": "Current city"}
+  llm_reply: {"answers": {"a": {"value": "caracas", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "caracas"}
