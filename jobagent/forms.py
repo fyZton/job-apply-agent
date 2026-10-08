@@ -99,6 +99,11 @@ JS_SCAN = r"""
 
 PLACEHOLDER = re.compile(r"^(select|selecciona|seleccionar|choose|elige|escoge|--|-)", re.I)
 YEARS_QUESTION = re.compile(r"\byears?\b|\baños\b", re.I)
+# "years of experience with Rust": the word after the preposition is the skill the question is about.
+SKILL_ASKED = re.compile(r"\b(?:experience|years?|a\u00f1os|experiencia)\s+(?:of\s+experience\s+)?"
+                         r"(?:with|in|of|using|on|con|en|de)\s+(?:the\s+|a\s+|an\s+)?([\w+#.]+)", re.I)
+GENERIC = {"total", "overall", "professional", "relevant", "similar", "related", "this", "that", "your", "our",
+           "work", "working", "industry", "the", "total."}
 IS_CV = re.compile(r"resume|curr[ií]cul|\bcv\b|hoja de vida", re.I)
 
 
@@ -159,6 +164,8 @@ class FormAssistant:
             self.cache = {}
         self.rules = [(re.compile(r["pattern"], re.I), r["value"]) for r in profile.get("fixed_answers", [])]
         self.facts = load_facts(profile)  # empty for a v1 profile: answers are then not checked against facts
+        self.v2 = isinstance(profile.get("version"), int) and profile["version"] >= 2
+        self._warned = False
 
     def _save_cache(self):
         self.cache_path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -196,10 +203,23 @@ class FormAssistant:
             return True
         return False
 
+    def _years_blocked(self, text):
+        """A v2 profile with no skill facts has nothing to back a years answer: those questions go to manual
+        review instead of being answered (or skipped) silently."""
+        if not (self.v2 and YEARS_QUESTION.search(text)) or any(f.kind == "skill" for f in self.facts.values()):
+            return False
+        if not self._warned:
+            self._warned = True
+            self.log("Warning: the profile is version 2 but has no skills in facts; years-of-experience "
+                     "questions go to manual review. Run --setup to add them.")
+        return True
+
     def _grounded(self, field, value, cited):
-        """With facts in the profile, an answer must be backed by them: every cited id exists, number and
-        open-text answers cite at least one (a plain 0 claims nothing), and a years answer is not above the
-        years of the facts it cites. Without facts (v1 profile) there is nothing to check."""
+        """With facts in the profile, a cited id must exist, and an answer that claims experience must be
+        backed by what it cites. Only years-of-experience questions (number, text, textarea) must cite: the
+        cited facts need a skill matching the one asked, and the answer cannot be above that skill's years.
+        A plain 0 claims nothing. Salary, dates and other fields need no citation: _valid and fixed_answers
+        cover them. Without facts (v1 profile) there is nothing to check."""
         if not self.facts:
             return True
         cited = cited or []
@@ -207,16 +227,32 @@ class FormAssistant:
         if unknown:
             self.log(f"answer for {field['question'][:60]!r} cites unknown facts {unknown}; not used")
             return False
+        text = f'{field.get("context", "")} {field["question"]}'
+        if field["type"] not in ("number", "text", "textarea") or not YEARS_QUESTION.search(text):
+            return True
         numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
-        claims_nothing = field["type"] == "number" and bool(numbers) and max(numbers) == 0
-        if field["type"] in ("number", "textarea") and not cited and not claims_nothing:
-            self.log(f"answer for {field['question'][:60]!r} cites no fact; not used")
+        if numbers and max(numbers) == 0:
+            return True
+        label = field["question"][:60]
+        named = {f.text.lower() for f in match_skills(self.facts, text)}
+        asked = SKILL_ASKED.search(text)
+        if not named and asked and asked[1].lower() not in GENERIC:
+            self.log(f"years answer for {label!r} asks about {asked[1]!r}, which is not in the profile; "
+                     "only 0 is allowed")
             return False
-        if cited and numbers and YEARS_QUESTION.search(f'{field.get("context", "")} {field["question"]}'):
-            limit = max(float(self.facts[i].years or 0) for i in cited)
-            if max(numbers) > limit:
-                self.log(f"years answer {max(numbers):g} is above the cited facts {cited} ({limit:g}); not used")
-                return False
+        skills = [self.facts[i] for i in cited if self.facts[i].kind == "skill"]
+        if named:
+            skills = [f for f in skills if f.text.lower() in named]
+        skills = [f for f in skills if f.years is not None]
+        if not skills:
+            self.log(f"years answer for {label!r} cites no skill fact with years"
+                     f"{' for ' + ', '.join(sorted(named)) if named else ''} (cited {cited}); not used")
+            return False
+        limit = max(f.years for f in skills)
+        if not numbers or max(numbers) > limit:
+            shown = f"{max(numbers):g}" if numbers else str(value)[:40]
+            self.log(f"years answer {shown} is above the cited facts {cited} ({limit:g}); not used")
+            return False
         return True
 
     def _manual_form(self, reason, fields):
@@ -244,6 +280,10 @@ class FormAssistant:
             text = f'{f.get("context", "")} {f["question"]}'
             rule = next((v for rx, v in self.rules if rx.search(text)), None)
             sensitive = is_sensitive(text)
+            if rule is None and not sensitive and self._years_blocked(text):
+                if f["required"]:
+                    missing.append(f["question"])
+                continue
             cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
             if rule is not None and self._valid(f, rule):
                 answers[f["id"]] = rule

@@ -306,8 +306,9 @@ def answer_fields(fields, profile_text, offer, model, raw=None, facts=None):
         profile_block = f"""{_without_sensitive(profile_text, drop=("facts",))}
 FACTS (the only experience you may claim; cite their ids):
 {facts_prompt(facts)}"""
-        cite_rule = ('- Every number and open-text answer must cite the fact ids it relies on, and a years answer '
-                     'cannot be higher than the cited fact. Never cite an id that is not in FACTS.\n')
+        cite_rule = ('- A years-of-experience answer must cite the id of the skill fact it relies on, and cannot be '
+                     'higher than that fact. Other answers may cite the facts they use; the "facts" list can be '
+                     'empty when none is used. Never cite an id that is not in FACTS.\n')
         reply = ('{"answers": {"<id>": {"value": <value>, "facts": ["<fact id>"]}}, "unknown": ["<id>"]}')
     else:
         years_rule = ('For "years of experience with X" use years_of_experience from the profile; if X is not '

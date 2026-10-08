@@ -259,10 +259,13 @@ def test_zero_needs_no_citation(grounded, monkeypatch):
     assert answers == {"a": "0"}
 
 
-def test_textarea_without_citation_is_rejected(grounded, monkeypatch):
+def test_textarea_without_citation_is_fine_unless_it_claims_experience(grounded, monkeypatch):
     fake_llm(monkeypatch, {"answers": {"a": "I love backend work."}, "unknown": []})
-    answers, missing = grounded.decide([field("a", "Why do you want this job?", "textarea")], OFFER)
-    assert answers == {} and missing == ["Why do you want this job?"]
+    answers, _ = grounded.decide([field("a", "Why do you want this job?", "textarea")], OFFER)
+    assert answers == {"a": "I love backend work."}
+    fake_llm(monkeypatch, {"answers": {"a": "Ten years of Python."}, "unknown": []})
+    answers, missing = grounded.decide([field("b", "Describe your years of experience", "textarea")], OFFER)
+    assert answers == {} and missing == ["Describe your years of experience"]
 
 
 def test_textarea_with_known_citation_is_accepted(grounded, monkeypatch):
@@ -307,3 +310,66 @@ def test_v1_profile_dict_path_is_unchanged(seasoned, monkeypatch):
     fields = [field("a", "Years of experience with Python?", "number"), field("b", "Why?", "textarea")]
     answers, _ = seasoned.decide(fields, OFFER)
     assert answers == {"a": "3", "b": "Because Python."}
+
+
+# --- citations only where an experience claim is made ---------------------------------------------------
+
+def answer(grounded, monkeypatch, question, type_, value, *ids):
+    reply = {"answers": {"a": value}, "unknown": []}
+    if ids:
+        reply["answers"]["a"], reply["facts"] = value, {"a": list(ids)}
+    fake_llm(monkeypatch, reply)
+    grounded.cache.clear()  # one assistant answers several variants of the same question
+    return grounded.decide([field("a", question, type_)], OFFER)[0]
+
+
+@pytest.mark.parametrize("question, type_, value", [
+    ("Expected monthly salary in USD", "number", "1500"),
+    ("Notice period in days", "number", "15"),
+    ("Current city", "text", "Caracas"),
+])
+def test_fields_that_claim_no_experience_need_no_citation(grounded, monkeypatch, question, type_, value):
+    assert answer(grounded, monkeypatch, question, type_, value) == {"a": value}
+
+
+@pytest.mark.parametrize("type_", ["number", "text", "textarea"])
+def test_years_question_needs_a_citation_in_every_text_like_field(grounded, monkeypatch, type_):
+    assert answer(grounded, monkeypatch, "Years of experience with Python?", type_, "3") == {}
+    assert answer(grounded, monkeypatch, "Years of experience with Python?", type_, "3", "skill.python") == {"a": "3"}
+
+
+def test_years_limit_is_the_years_of_the_skill_asked(grounded, monkeypatch):
+    q = "Years of experience with SQL?"
+    assert answer(grounded, monkeypatch, q, "number", "2", "skill.sql") == {"a": "2"}
+    # Python (3) is cited too, but the question is about SQL (2)
+    assert answer(grounded, monkeypatch, q, "number", "3", "skill.python", "skill.sql") == {}
+    assert answer(grounded, monkeypatch, q, "number", "3", "skill.python") == {}  # no SQL fact cited
+
+
+def test_skill_missing_from_the_facts_only_allows_zero(grounded, monkeypatch):
+    q = "How many years of experience with Rust?"
+    assert answer(grounded, monkeypatch, q, "number", "3", "skill.python") == {}
+    assert answer(grounded, monkeypatch, q, "number", "0") == {"a": "0"}
+
+
+def test_without_a_named_skill_the_limit_is_the_best_cited_skill(grounded, monkeypatch):
+    q = "How many years of professional experience do you have?"
+    assert answer(grounded, monkeypatch, q, "number", "3", "skill.python", "skill.sql") == {"a": "3"}
+    assert answer(grounded, monkeypatch, q, "number", "3", "skill.sql") == {}
+    # a cited fact that is not a skill is ignored
+    assert answer(grounded, monkeypatch, q, "number", "2", "lang.english", "skill.sql") == {"a": "2"}
+    assert answer(grounded, monkeypatch, q, "number", "1", "lang.english") == {}  # no cited skill with years
+
+
+def test_v2_profile_without_skills_sends_years_questions_to_manual(tmp_path, monkeypatch):
+    logs = []
+    calls = fake_llm(monkeypatch, {"answers": {"a": "3", "b": "Caracas"}, "unknown": []})
+    profile = {**PROFILE, "version": 2, "facts": [{"id": "lang.english", "kind": "language", "name": "English"}]}
+    a = FormAssistant(profile, "name: Alex", tmp_path, "m", logs.append)
+    a.cache[normalize(" Years of experience with Python?")] = "3"
+    fields = [field("a", "Years of experience with Python?", "number"), field("b", "Current city")]
+    answers, missing = a.decide(fields, OFFER)
+    assert answers == {"b": "Caracas"} and missing == ["Years of experience with Python?"]
+    assert calls == [["b"]]  # the years question never reached the model
+    a.decide(fields, OFFER)
+    assert sum("no skills" in m for m in logs) == 1  # warned once

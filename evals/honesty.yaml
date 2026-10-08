@@ -66,6 +66,6 @@
   expect: {unanswered: true}
 
 - id: honesty-open-answer-without-citation-rejected
-  field: {id: a, type: textarea, question: "Why do you want this job?"}
+  field: {id: a, type: textarea, question: "Describe your years of experience and where you used them."}
   llm_reply: {answers: {a: "I have led large teams for ten years."}, unknown: []}
   expect: {unanswered: true}
