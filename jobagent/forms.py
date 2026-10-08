@@ -6,6 +6,7 @@ from pathlib import Path
 
 from jobagent import llm
 from jobagent.core import pause
+from jobagent.safety import is_sensitive, looks_injected
 
 # Walks the visible fields inside `root`, tags each with a data-ap attribute and returns their description.
 JS_SCAN = r"""
@@ -165,39 +166,69 @@ class FormAssistant:
         return value not in (None, "")
 
     def _overstates_years(self, field, value):
-        """True if a years-of-experience answer is a number above anything the profile claims."""
-        years = [v for v in (self.profile.get("years_of_experience") or {}).values() if isinstance(v, int | float)]
-        if not years or not YEARS_QUESTION.search(f'{field.get("context", "")} {field["question"]}'):
+        """True if a years-of-experience answer claims more than the profile does.
+
+        The answer's largest number (so "5+" is 5 and "5-7" is 7) is compared with the years of the skill the
+        question names, or with the profile's maximum when no skill matches."""
+        text = f'{field.get("context", "")} {field["question"]}'
+        skills = {str(k).lower(): v for k, v in (self.profile.get("years_of_experience") or {}).items()
+                  if isinstance(v, int | float) and not isinstance(v, bool)}
+        if not skills or not YEARS_QUESTION.search(text):
             return False
-        try:
-            return float(str(value).strip()) > max(years)
-        except ValueError:
+        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
+        if not numbers:
+            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}")
             return False
+        words = set(re.findall(r"\w+", text.lower()))
+        named = {k: v for k, v in skills.items() if set(k.split("_")) <= words}
+        limit_name, limit = max(named.items(), key=lambda kv: kv[1]) if named else ("any skill", max(skills.values()))
+        if max(numbers) > limit:
+            self.log(f"years answer {max(numbers):g} is above the profile's {limit:g} ({limit_name}); not used")
+            return True
+        return False
+
+    def _manual_form(self, reason, fields):
+        self.log(f"Form sent to manual review: {reason}")
+        return {}, [f["question"] for f in fields if f["type"] != "file" and f.get("required")] or [
+            "(the form looks like a prompt injection; fill it by hand)"]
 
     def decide(self, fields, offer):
         """Returns (answers {id: value}, unanswered required questions [text]).
 
-        Order: fixed rules from the profile -> learned answers cache -> LLM for the rest."""
+        Order: fixed rules from the profile -> learned answers cache -> LLM for the rest. Sensitive fields (ids,
+        banking, passwords, birth dates) only ever get a fixed rule. A form whose labels look like an
+        injection goes to manual review as a whole, with no LLM call."""
+        for f in fields:
+            labels = [f["question"], f.get("context", ""), *map(str, f.get("options") or [])]
+            reasons = looks_injected(chr(10).join(map(str, labels)))
+            if reasons:
+                return self._manual_form(f"field {f['id']} text matches an injection instruction "
+                                         f"({', '.join(reasons)})", fields)
         answers, pending = {}, []
+        missing = []
         for f in fields:
             if f["type"] == "file" or not _empty(f):
                 continue
             text = f'{f.get("context", "")} {f["question"]}'
             rule = next((v for rx, v in self.rules if rx.search(text)), None)
-            cached = self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
+            sensitive = is_sensitive(text)
+            cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
             if rule is not None and self._valid(f, rule):
                 answers[f["id"]] = rule
-            elif cached is not None and self._valid(f, cached):
+            elif cached is not None and self._valid(f, cached) and not self._overstates_years(f, cached):
                 answers[f["id"]] = cached
+            elif sensitive:
+                if f["required"]:
+                    missing.append(f["question"])
             elif f["type"] == "checkbox" and not f["required"]:
                 continue
             else:
                 pending.append(f)
-        missing = []
         if pending:
             r = llm.answer_fields(pending, self.profile_text, offer, self.model)
             if r is None:
-                return answers, [f["question"] for f in pending if f["required"]] or ["(the LLM did not answer)"]
+                return answers, missing + [f["question"] for f in pending if f["required"]] or [
+                    "(the LLM did not answer)"]
             unknown = set(r.get("unknown") or [])
             llm_answers = r.get("answers") or {}
             for f in pending:
