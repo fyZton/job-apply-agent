@@ -461,3 +461,79 @@ def test_managing_claims_need_a_managing_verb_in_the_profile():
     claims = Claims(load_facts(CS), None, CS)
     why = claims.check({"type": "textarea"}, "Anything else?", "I managed a team of 4")[1]
     assert "years" not in why and why
+
+
+# --- round 11 --------------------------------------------------------------------------------------------------------
+
+MGMT = {**PROFILE, "facts": BASE + [{"id": "exp.b", "kind": "experience", "title": "Lead", "org": "Beta",
+                                     "start": "2020-01",
+                                     "bullets": [{"id": "exp.b.b1", "text": "Managed a small team"}]}]}
+MGMT_QS = ["Have you managed a team?", "Have you managed teams?", "Do you have experience managing a team?",
+           "Have you ever handled a team?", "Have you managed a team of 5 or more?"]
+
+
+@pytest.mark.parametrize("question", MGMT_QS)
+@pytest.mark.parametrize("type_", ["radio", "select", "checkbox"])
+def test_management_questions_need_a_managing_verb(question, type_):
+    value = True if type_ == "checkbox" else "Yes"
+    assert not verdict_q(question, value, type_)
+    assert verdict_q(question, value, type_, profile=MGMT)
+
+
+R11_REJECT = [
+    ("textarea", "Anything else?", "I have managed teams for years."),
+    ("textarea", "Anything else?", "I led the team."),
+    ("textarea", "Anything else?", "I have led teams and managed several projects"),
+    ("text", "How many years of experience do you have with Python?", "3 decades"),
+    ("textarea", "Anything else?", "Two decades of Python."),
+    ("textarea", "Anything else?", "A couple of decades of Python."),
+    ("textarea", "Anything else?", "Several decades of Python."),
+    ("textarea", "Anything else?", "I hold a doctoral degree in physics."),
+    ("textarea", "Tell us about yourself", "I have 8 years of professional experience building backend systems."),
+    ("textarea", "Tell us about yourself", "I bring 8 years of relevant experience."),
+    ("textarea", "Tell us about yourself", "8 years of hands-on experience in the industry."),
+    ("textarea", "Tell us about yourself", "8 years in software overall"),
+    ("textarea", "Anything else?", "No doubt I am a Kubernetes expert with 7 years."),
+    ("textarea", "Anything else?", "I never stopped using Kubernetes in production."),
+    ("textarea", "Anything else?", "I have never been without Kubernetes at work."),
+    ("textarea", "Anything else?", "Not a day goes by without me writing Kubernetes manifests."),
+    ("textarea", "Anything else?", "I have never used Kubernetes and I am an expert in Terraform."),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R11_REJECT)
+def test_round11_rejects(type_, question, value):
+    assert not verdict_q(question, value, type_, profile=CS)
+
+
+R11_ACCEPT = [
+    ("textarea", "Tell us about yourself", "3 years of professional experience"),
+    ("textarea", "Anything else?", "I have never used Kubernetes."),
+    ("textarea", "Anything else?", "No tengo experiencia con Kubernetes."),
+    ("textarea", "Anything else?", "No, I have not worked with Kubernetes."),
+    ("textarea", "Anything else?", "I have never used Kubernetes or Terraform."),
+    ("text", "Where are you located?", "Caracas, Venezuela"),
+    ("text", "Where are you based?", "Caracas"),
+    ("text", "Where do you live?", "Caracas"),
+    ("radio", "Are you based in Venezuela?", "Yes"),
+    ("radio", "Are you located in LATAM?", "Yes"),
+    ("radio", "Can you work in the EST time zone?", "Yes"),
+    ("radio", "Can you overlap 4 hours with US Eastern time?", "Yes"),
+    ("radio", "Are you comfortable with a 3-month contract?", "Yes"),
+    ("radio", "Can you work in a hybrid model?", "Yes"),
+    ("text", "How did you hear about us?", "LinkedIn"),
+    ("text", "How did you hear about us?", "Indeed"),
+    ("text", "How did you hear about us?", "Glassdoor"),
+    ("text", "How did you hear about us?", "Google"),
+    ("text", "How did you hear about us?", "A referral"),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R11_ACCEPT)
+def test_round11_accepts(type_, question, value):
+    assert verdict_q(question, value, type_, profile=CS)
+
+
+def test_answers_about_managing_are_backed_by_a_managing_verb():
+    assert verdict_q("Anything else?", "I led the team.", "textarea", profile=MGMT)
+    assert verdict_q("Anything else?", "I have managed teams for years.", "textarea", profile=MGMT)

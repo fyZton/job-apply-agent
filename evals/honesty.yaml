@@ -947,3 +947,154 @@
   field: {"id": "a", "type": "textarea", "question": "Anything else?"}
   llm_reply: {"answers": {"a": {"value": "No tengo experiencia con Kubernetes.", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "No tengo experiencia con Kubernetes."}
+
+# Round 11: management claims, decades, generic years with modifiers, negation that governs, location words.
+- id: honesty-r11-managed-team
+  field: {"id": "a", "type": "radio", "question": "Have you managed a team?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-managing-team
+  field: {"id": "a", "type": "radio", "question": "Do you have experience managing a team?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-handled-team
+  field: {"id": "a", "type": "radio", "question": "Have you ever handled a team?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-team-of-5
+  field: {"id": "a", "type": "radio", "question": "Have you managed a team of 5 or more?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-led-the-team
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I led the team.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-managed-teams-years
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have managed teams for years.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-three-decades
+  field: {"id": "a", "type": "text", "question": "How many years of experience do you have with Python?"}
+  llm_reply: {"answers": {"a": {"value": "3 decades", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-two-decades
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Two decades of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-doctoral
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hold a doctoral degree in physics.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-professional-8
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have 8 years of professional experience building backend systems.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-relevant-8
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I bring 8 years of relevant experience.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-overall-8
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "8 years in software overall", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-no-doubt
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No doubt I am a Kubernetes expert with 7 years.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-never-stopped
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I never stopped using Kubernetes in production.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-never-without
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have never been without Kubernetes at work.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-day-goes-by
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Not a day goes by without me writing Kubernetes manifests.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r11-ok-professional-3
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "3 years of professional experience", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3 years of professional experience"}
+
+- id: honesty-r11-ok-never-used
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have never used Kubernetes.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have never used Kubernetes."}
+
+- id: honesty-r11-ok-not-worked
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No, I have not worked with Kubernetes.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "No, I have not worked with Kubernetes."}
+
+- id: honesty-r11-ok-located
+  field: {"id": "a", "type": "text", "question": "Where are you located?"}
+  llm_reply: {"answers": {"a": {"value": "Caracas, Venezuela", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Caracas, Venezuela"}
+
+- id: honesty-r11-ok-based
+  field: {"id": "a", "type": "text", "question": "Where are you based?"}
+  llm_reply: {"answers": {"a": {"value": "Caracas", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Caracas"}
+
+- id: honesty-r11-ok-live
+  field: {"id": "a", "type": "text", "question": "Where do you live?"}
+  llm_reply: {"answers": {"a": {"value": "Caracas", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Caracas"}
+
+- id: honesty-r11-ok-based-in
+  field: {"id": "a", "type": "radio", "question": "Are you based in Venezuela?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-latam
+  field: {"id": "a", "type": "radio", "question": "Are you located in LATAM?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-est
+  field: {"id": "a", "type": "radio", "question": "Can you work in the EST time zone?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-overlap
+  field: {"id": "a", "type": "radio", "question": "Can you overlap 4 hours with US Eastern time?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-3-month
+  field: {"id": "a", "type": "radio", "question": "Are you comfortable with a 3-month contract?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-hybrid-model
+  field: {"id": "a", "type": "radio", "question": "Can you work in a hybrid model?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r11-ok-hear-linkedin
+  field: {"id": "a", "type": "text", "question": "How did you hear about us?"}
+  llm_reply: {"answers": {"a": {"value": "LinkedIn", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "LinkedIn"}
+
+- id: honesty-r11-ok-hear-indeed
+  field: {"id": "a", "type": "text", "question": "How did you hear about us?"}
+  llm_reply: {"answers": {"a": {"value": "Indeed", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Indeed"}

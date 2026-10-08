@@ -613,3 +613,11 @@ def test_source_with_other_whitespace_and_case_still_counts(monkeypatch):
     (fact,) = facts_for(monkeypatch, text, [
         {"kind": "skill", "name": "Java", "years": 8, "source": "python, JAVA (8 years)"}])
     assert fact["years"] == 8
+
+
+def test_skill_in_a_negated_clause_is_dropped(monkeypatch):
+    text = "Skills: Python (3 years). No experience with Kubernetes.\n"
+    facts = facts_for(monkeypatch, text, [
+        {"kind": "skill", "name": "Kubernetes", "source": "No experience with Kubernetes."},
+        {"kind": "skill", "name": "Python", "years": 3, "source": "Python (3 years)"}])
+    assert [f["name"] for f in facts] == ["Python"]

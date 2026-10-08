@@ -122,6 +122,8 @@ employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
 old older adult adults mayor mayores edad accept accepts
+located based live living lives reside resides ubicado ubicada vives vive vivo est edt cst pst mst eastern central
+pacific mountain gmt utc cet overlap comfortable model duration
 full-time part-time fulltime parttime contract contractor contractors freelance employee employees office oficina
 onsite on-site hybrid commute internet connection reliable equipment laptop computer inmediata inmediato
 immediately forma modalidad shift shifts weekend weekends travel viajar references reference referencias open
@@ -149,7 +151,8 @@ nearly usually normally typically generally
 actualmente anteriormente recientemente principalmente directamente completamente fluidamente nativamente
 aproximadamente totalmente normalmente generalmente
 """.split())
-NUMTOK = re.compile(r"\d+(?:[.,]\d+)?(?:[-+]\d+(?:[.,]\d+)?)?\+?(?:k|m|st|nd|rd|th|x|%)?")
+NUMTOK = re.compile(r"\d+(?:[.,]\d+)?(?:[-+]\d+(?:[.,]\d+)?)?\+?(?:k|m|st|nd|rd|th|x|%)?|"
+                    r"\d+-(?:months?|years?|weeks?|days?|hours?|mes|meses)")
 WORD_YEARS = {2: 0, 3: 1, 4: 2, 5: 3, 6: 5}  # beginner, intermediate, professional, advanced, expert: years behind
 MONEY = set("""
 usd eur gbp mxn cop ves ars clp pen brl cad k m mil month months mes meses year years yearly annual monthly mensual
@@ -158,11 +161,12 @@ before after tax taxes impuestos and y or o around circa to
 """.split())
 SALARY_Q = re.compile(r"\b(?:salary|salaries|salario|salarios|sueldo|compensation|wage|pay|hourly|remuneracion)\b")
 # Questions whose answer is a place, a name or a link: proper names in the answer are fine there.
-PLACE_Q = re.compile(r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
+PLACE_Q = re.compile(r"located|based|\blive\b|living|\blives\b|reside|ubicad|\bvives?\b|vivo|"
+                     r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
                      r"\bzip\b|postal|\bname\b|nombre|apellido|surname|employer|empleador|linkedin|github|portfolio|"
                      r"portafolio|website|sitio web|hear|referr|referid|enteraste|citizen|nationality|nacionalidad|"
                      r"gender|genero|pronoun|time ?zone|zona horaria|school|university|universidad|company|empresa")
-EDU_Q = re.compile(r"\b(?:degree|bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
+EDU_Q = re.compile(r"\b(?:degree|doctoral|bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
                    r"doctorado|diploma|titulo|grado|graduate|universit\w*|education|educacion|estudios|carrera)\b")
 CERT_Q = re.compile(r"\bcertif\w*|\bcertificad\w*")
 EDU_RANKS = ((3, r"\b(?:phd|doctor\w*)\b"),
@@ -243,6 +247,8 @@ _NUMW["una"] = 1
 _SPELLED = re.compile(r"\b(" + "|".join(_NUMW) + r")\b(?=\s*\+?\s*(?:years?|yrs?|anos?|months?|meses))")
 
 
+DECADES = re.compile(r"\b(\d+|" + "|".join(_NUMW) + r")\s+(?:decades|decadas)\b")
+COUPLE_DECADES = re.compile(r"\b(?:a )?couple of decades\b|\bun par de decadas\b")
 HALF_DECADE = re.compile(r"\bhalf an? decade\b|\bmedia decada\b")
 DECADE = re.compile(r"\b(?:(?:a|one|un|una)\s+)?(?:decade|decada)\b")
 
@@ -251,6 +257,8 @@ def spell(v):
     """The folded answer with spelled numbers (one..twenty, uno..veinte) as digits: "ten years" is "10 years";
     a lone "three" is 3."""
     v = HALF_DECADE.sub("5 years", v)
+    v = DECADES.sub(lambda m: f"{int(m.group(1)) * 10 if m.group(1).isdigit() else _NUMW[m.group(1)] * 10} years", v)
+    v = COUPLE_DECADES.sub("20 years", v)
     v = DECADE.sub("10 years", v)
     v = _SPELLED.sub(lambda m: str(_NUMW[m.group(1)]), v)
     return str(_NUMW[v.strip()]) if v.strip() in _NUMW else v
@@ -340,15 +348,22 @@ def _chunk(rest):
     return TOKEN_OR_COMMA.findall(re.split(r"[;:!?\n(]|\.(?:\s|$)", rest, maxsplit=1)[0][:150])
 
 
+GENERIC_ADJ = set("""
+professional relevant hands-on handson industry overall total solid proven practical real-world commercial strong
+extensive deep good great software work working full-time related
+""".split())
+
+
 def _after(rest):
     """What an answer says a claim is about, in the clause after "3 years of" / "experience with": None if it
     is not about experience, [] if it is generic ("3 years of experience"), else the technology groups."""
     toks = _chunk(rest)
-    i = 0
-    while i < len(toks) and toks[i] in PREP:
+    i, generic = 0, False
+    while i < len(toks) and (toks[i] in PREP or toks[i] in GENERIC_ADJ):
+        generic = generic or toks[i] in GENERIC_ADJ
         i += 1
     if i == len(toks):
-        return None
+        return [] if generic else None
     if toks[i] in ("experience", "experiencia"):
         return []
     if is_stop(toks[i]):
@@ -406,34 +421,55 @@ CERT_CTX = re.compile(r"\bcertif\w*|\bholds?\b|\b(?:pmp|capm|cka|ckad|cks|cissp|
                       r"itil|ccna|ccnp|csm|psm|oscp|ceh|togaf|prince2|comptia|ielts|toefl)\b")
 SCRUM = re.compile(r"\bscrum masters?\b")
 CERTIFIED = re.compile(r"\b(?:certified|certificad[oa])\b")
-ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|masters?|maestria|mba|msc|m\.sc|ms|m\.s|bachelors?|licenciatura|"
+ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|doctoral|doctor of philosophy|masters?|maestria|mba|msc|"
+                     r"m\.sc|ms|m\.s|bachelors?|licenciatura|"
                      r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree)\b")
 BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speaker|proficiency)|\bnivel nativo|"
                        r"\bnative proficiency|\bfull proficiency")
 # A clause that starts with a negation says nothing about the profile ("No", "I have not used X yet"); "not just X",
 # "no one" and "no other" do not negate. Clauses end at . ; ! ? : , " - " and "but".
-NEG_CLAUSE = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos|ha)\s+)?"
-                        r"(?:not|never|nunca|no|havent|dont|didnt|nope|none|ninguno|ninguna|nada|false|0|n/a)\b"
-                        r"(?!\s*(?:only|just|solo|solamente|one\b|other|body))")
-CLAUSES = re.compile(r"[.;!?:\n]+|,\s|\s[-\u2013\u2014]\s|\b(?:but|pero|however|although|aunque)\b", re.I)
-
-
+# A clause is skipped only when the negation governs the claim: "no", "not yet", "I have never used X", "no tengo
+# experiencia con X". "No doubt I am a X expert", "I never stopped using X" or "not just X" are claims.
+BARE_NO = re.compile(r"(?:no|nope|none|ninguno|ninguna|nada|false|0|n/a|not yet|not really|never|nunca|not|"
+                     r"no thanks|no gracias|no tengo|no he|(?:i |yo )?(?:do not|dont|did not|didnt|have not|havent|"
+                     r"am not|have none)(?: (?:have|any|yet))*)\W*")
+NEG_GOV = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos|ha)\s+)?"
+                     r"(?:not|never|nunca|no|havent|dont|didnt)\s+(?:(?:yet|todavia|aun|ever|really|actually|any|have|ha|he)\s+)*"
+                     r"(?:used|use|worked|work|working|experience|knowledge|tengo|usado|trabajado|touched|done|programmed|"
+                     r"coded|written|had|conocimientos?|experiencia|usar|trabaje)\b")
+NEG_BLOCK = re.compile(r"\b(?:doubt|problem|stopped|stop|without|sin|only|just|solo|solamente|except|excepto|even|also|"
+                       r"tambien|more than|day)\b")
+CLAUSES = re.compile(r"[.;!?:\n]+|,\s|\s[-\u2013\u2014]\s|"
+                     r"\b(?:but|pero|however|although|aunque|while|whereas|though)\b|"
+                     r"\b(?:and|y)\s+(?=(?:i|yo|we|my|mi|have|am|soy|tengo)\b)", re.I)
 FILLER = re.compile(r"(?:thanks|thank you|gracias|sorry|please|yet|todavia|aun|really|at all|for now|por ahora)\W*")
+
+
+def negated(clause):
+    f = fold(clause).strip()
+    return bool(BARE_NO.fullmatch(f) or FILLER.fullmatch(f) or (NEG_GOV.match(f) and not NEG_BLOCK.search(f)))
 
 
 def positive(raw):
     """The answer without its negated clauses: "" if all of it is negated, `raw` itself if none is."""
     clauses = [c for c in CLAUSES.split(raw) if c and c.strip()]
-    keep = [c for c in clauses if not NEG_CLAUSE.match(fold(c)) and not FILLER.fullmatch(fold(c).strip())]
+    keep = [c for c in clauses if not negated(c)]
     if len(keep) == len(clauses):
         return raw
     return ". ".join(c.strip() for c in keep)
 
 
-TEAM = re.compile(r"\b(managed|managing|led|leading|supervised|mentored|directed|coordinat\w*|lider\w*|dirig\w*|"
-                  r"gestion\w*|coordin\w*)\b"
-                  r"[^.;!?]{0,25}?\b(?:\d+|" + "|".join(_NUMW) + r")\b")
+TEAM = re.compile(r"\b(managed|managing|manage|handled|handling|led|leading|lead|supervised|supervising|mentored|"
+                  r"mentoring|coordinat\w*|directed|lider\w*|dirig\w*|gestion\w*)\b[^.;!?]{0,30}?\b(?:\d+|"
+                  + "|".join(_NUMW)
+                  + r"|teams?|people|engineers|developers|equipos?|personas|staff|interns|juniors|reports)\b")
 MANAGING = re.compile(r"manag\w*|led|lead\w*|supervis\w*|mentor\w*|coordin\w*|direct\w*|lider\w*|dirig\w*|gestion\w*")
+MGMT_VERB = (r"(?:manag\w*|handl\w*|led|lead(?:ing)?|supervis\w*|mentor\w*|coordinat\w*|direct(?:ed|ing)|lider\w*|"
+             r"gestion\w*|dirig\w*)")
+MGMT_OBJ = r"(?:teams?|people|engineers|developers|equipos?|personas|staff|reports|juniors|interns)"
+MGMT_Q = re.compile(r"\b" + MGMT_VERB + r"\b[^.?!;]{0,30}?\b" + MGMT_OBJ + r"\b|"
+                    r"\bexperience (?:in )?(?:managing|leading|supervising)\b|\bpeople management\b|"
+                    r"\bteam management\b")
 SINCE_YEAR = re.compile(r"\b(?:since|desde)\s+((?:19|20)\d\d)\b")
 DOING = re.compile(r"cod(?:e|ing)|program\w*|develop\w*|software|engineer\w*|work(?:ed|ing)|using|used|experience|"
                    r"experiencia|trabaj\w*|desarroll\w*|usando|building|built")
@@ -489,10 +525,10 @@ def _tech_like(word, start, after, names=True):
         return False
     if CEFR.fullmatch(f) or ORDINAL.fullmatch(f) or re.fullmatch(r"(?:utc|gmt)[+-]?\d*", f):
         return False
-    if any(c.isdigit() for c in word) or any(c in word for c in "+#.") or re.search(r"[a-z][A-Z]", word):
+    if any(c.isdigit() for c in word) or any(c in word for c in "+#."):
         return True
-    if len(word) >= 2 and word.isupper():
-        return True
+    if names and (re.search(r"[a-z][A-Z]", word) or len(word) >= 2 and word.isupper()):
+        return True  # CamelCase and ALL-CAPS: a place or a job board ("LinkedIn", "LATAM") answers a place question
     if names and word[0].isupper() and f not in STOP and f not in LANGS:
         return not start or SENTENCE_START.match(after) is not None
     return False
@@ -630,6 +666,8 @@ class Claims:
         if not value.strip():
             return True, ""  # a bare "No" claims nothing
         t, v = fold(text), spell(fold(value))
+        if "decad" in v:
+            return False, "the answer counts in decades in a way that cannot be read"
         kind = answer_kind(v)
         why = ""
         free = field["type"] in ("text", "textarea")
@@ -643,6 +681,8 @@ class Claims:
         if field["type"] in ("text", "textarea") and SALARY_Q.search(fold(field.get("question") or text)) and [
                 tok for tok in TOKEN.findall(v) if not NUMTOK.fullmatch(tok) and tok not in MONEY]:
             return False, "a pay answer is a number and a currency, nothing else"
+        if MGMT_Q.search(t) and not self._manages():
+            return False, "claims to have managed or led people, which the profile does not back"
         q, ctx = fold(field.get("question") or text), fold(field.get("context") or "")
         topic = self._topic(q) and (not ctx or self._topic(ctx, named=False))  # label and legend both
         if self.facts:
@@ -653,6 +693,9 @@ class Claims:
         elif not why and field.get("options") and kind is None:  # the text of an option claims things too
             why = self._answer_claims(str(value), t, True)
         return not why, why
+
+    def _manages(self):
+        return any(MANAGING.fullmatch(tok) for tok in self.known)
 
     def _language(self, t, v, kind, opts=()):
         if kind == "no":
@@ -798,7 +841,7 @@ class Claims:
                 return f"the answer names the role {tok!r}, which is not in the profile"
         if re.search(r"\bhead of\b", v) and "head" not in self.known:
             return "the answer names the role 'head', which is not in the profile"
-        if TEAM.search(v) and not any(MANAGING.fullmatch(tok) for tok in self.known):
+        if TEAM.search(v) and not self._manages():
             return "the answer claims to have managed or led people, which the profile does not back"
         for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])

@@ -226,6 +226,21 @@ def _span(source, text):
     return m.group() if m else None
 
 
+NEGATION = r"(?:no|not|never|without|sin|nunca|ninguna?|ningun|lack\w*)"
+
+
+def _negated(name, source):
+    """The name sits in a negated clause of its quote ("no experience with Kubernetes")."""
+    if not isinstance(name, str) or not isinstance(source, str) or not _norm(name):
+        return False
+    for clause in re.split(r"[.;,\n]|\bbut\b|\bpero\b", source, flags=re.I):
+        c = _norm(clause)
+        if _has(name, c) and re.search(rf"(?<![a-z0-9+#]){NEGATION}(?![a-z0-9+#])(?:\s+[a-z0-9+#]+){{0,4}}?\s+"
+                                       rf"{re.escape(_norm(name))}(?![a-z0-9+#])", c):
+            return True
+    return False
+
+
 def _fact(raw, haystack, used, log, text=None):
     """(fact, reason). The fact is clean, or None with the reason: "unbacked" if its quote is not in the CV or
     does not mention its name, "invalid" if it is malformed. Values the quote does not contain are dropped."""
@@ -234,6 +249,8 @@ def _fact(raw, haystack, used, log, text=None):
         return None, "invalid"
     q = _quote(raw.get("source"), haystack)
     if q is None:
+        return None, "unbacked"
+    if kind != "experience" and _negated(raw.get(MAIN[kind][0]), _span(raw.get("source"), text) or raw.get("source")):
         return None, "unbacked"
     fact = {"kind": kind}
     for key in MAIN[kind]:
