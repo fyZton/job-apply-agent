@@ -96,6 +96,7 @@ JS_SCAN = r"""
 """
 
 PLACEHOLDER = re.compile(r"^(select|selecciona|seleccionar|choose|elige|escoge|--|-)", re.I)
+YEARS_QUESTION = re.compile(r"\byears?\b|\baños\b", re.I)
 IS_CV = re.compile(r"resume|curr[ií]cul|\bcv\b|hoja de vida", re.I)
 
 
@@ -163,6 +164,16 @@ class FormAssistant:
             return best_option(value, field["options"]) is not None
         return value not in (None, "")
 
+    def _overstates_years(self, field, value):
+        """True if a years-of-experience answer is a number above anything the profile claims."""
+        years = [v for v in (self.profile.get("years_of_experience") or {}).values() if isinstance(v, int | float)]
+        if not years or not YEARS_QUESTION.search(f'{field.get("context", "")} {field["question"]}'):
+            return False
+        try:
+            return float(str(value).strip()) > max(years)
+        except ValueError:
+            return False
+
     def decide(self, fields, offer):
         """Returns (answers {id: value}, unanswered required questions [text]).
 
@@ -191,7 +202,7 @@ class FormAssistant:
             llm_answers = r.get("answers") or {}
             for f in pending:
                 value = llm_answers.get(f["id"])
-                if f["id"] in unknown or not self._valid(f, value):
+                if f["id"] in unknown or not self._valid(f, value) or self._overstates_years(f, value):
                     if f["required"]:
                         missing.append(f["question"])
                     continue

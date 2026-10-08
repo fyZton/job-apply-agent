@@ -24,6 +24,7 @@ from playwright.sync_api import sync_playwright
 from jobagent import llm
 from jobagent.core import DATA_DIR, SessionExpired, pause
 from jobagent.forms import FormAssistant
+from jobagent.safety import looks_injected, stop_requested
 from jobagent.sites import SITES
 from jobagent.tracker import Tracker
 
@@ -34,6 +35,10 @@ BROWSER_PROFILE = Path(os.environ.get("JOBAGENT_BROWSER", Path.home() / ".jobage
 
 class LLMUnavailable(Exception):
     """Claude is not answering (e.g. the plan's usage limit was reached)."""
+
+
+class StopRequested(Exception):
+    """The file data/STOP exists."""
 
 
 def log(msg):
@@ -98,6 +103,7 @@ class Run:
     def __init__(self, cfg, dry_run, root=ROOT, data=DATA_DIR):
         self.cfg = cfg
         self.dry_run = dry_run
+        llm.configure(cfg.get("llm", {}))
         self.profile_text = load_yaml("profile.yaml", root)
         profile = yaml.safe_load(self.profile_text)
         self.rules = profile.get("screening_rules", [])
@@ -117,11 +123,23 @@ class Run:
         mod = SITES[site]
         limit = self.cfg["daily_limit"][site]
         for offer in mod.search(page, self.cfg, self.tracker.seen):
+            if stop_requested(DATA_DIR):
+                raise StopRequested()
             sent = self.summary[site, "dry_run"] if self.dry_run else self.tracker.sent_today(site)
             if sent >= limit:
                 log(f"{mod.LABEL}: daily limit reached ({limit}).")
                 return
             self.one_offer(page, site, mod, offer)
+
+    def flag_suspicious(self, site, mod, offer, reasons):
+        """Skips a posting that looks like a prompt injection: no LLM call, left for the user to read."""
+        log(f"{mod.LABEL}: {offer.title} | {offer.company} -> suspicious posting ({reasons}); skipped")
+        self.summary[site, "suspicious"] += 1
+        self.tracker.mark(offer.key, "suspicious", title=offer.title, reason=reasons)
+        if not self.dry_run:
+            self.tracker.add_row({"Company": offer.company, "Title": offer.title, "Source": mod.LABEL,
+                                  "Link": offer.url, "Status": "To apply", "Next step": "Read it before applying",
+                                  "Notes": f"Suspicious posting: {reasons}"})
 
     def one_offer(self, page, site, mod, offer):
         k = offer.key
@@ -145,6 +163,11 @@ class Run:
             self.tracker.mark(k, "no_keywords", title=offer.title)
             return
 
+        reasons = looks_injected("\n".join([offer.title, offer.company, offer.text]))
+        if reasons:
+            self.flag_suspicious(site, mod, offer, ", ".join(reasons))
+            return
+
         ev = llm.score_offer(offer, self.profile_text, self.cvs, self.rules, self.cfg["llm"]["score_model"])
         if ev is None:
             self.llm_failures += 1
@@ -152,10 +175,7 @@ class Run:
                 raise LLMUnavailable()
             return
         self.llm_failures = 0
-        try:
-            fit = int(ev.get("fit", 0))
-        except (TypeError, ValueError):
-            fit = 0
+        fit = ev["fit"]
         offer.company = offer.company or ev.get("company", "")
         offer.title = offer.title or ev.get("title", "")
         reason = ev.get("reason", "")
@@ -213,6 +233,12 @@ def run_all(run, sites, ctx):
         except LLMUnavailable:
             log("Claude is not answering (usage limit?). Stopping; retry later.")
             break
+        except StopRequested:
+            log("STOP file found; delete it to run again.")
+            break
+        except llm.BudgetExceeded as e:
+            log(f"{e}. Stopping.")
+            break
         except Exception as e:
             log(f"{label}: unexpected error, moving to the next board: {type(e).__name__}: {e}")
             screenshot(page, site)
@@ -223,7 +249,9 @@ def report(run, sites):
     log("=== Summary ===")
     for site in sites:
         log(f"{SITES[site].LABEL}: sent {s[site, 'sent']} | dry-run OK {s[site, 'dry_run']} | "
-            f"to do by hand {s[site, 'manual'] + s[site, 'error']} | discarded by fit {s[site, 'discarded']}")
+            f"to do by hand {s[site, 'manual'] + s[site, 'error']} | discarded by fit {s[site, 'discarded']} | "
+            f"suspicious {s[site, 'suspicious']}")
+    log(llm.usage_summary())
     if run.tracker.pending:
         log("Some rows are waiting for the Excel file to be closed; they will be saved on the next run.")
 

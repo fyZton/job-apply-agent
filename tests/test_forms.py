@@ -94,3 +94,25 @@ def test_llm_answer_outside_options_is_rejected(assistant, monkeypatch):
     assert answers == {}
     assert missing == ["Do you need visa sponsorship?"]
     assert normalize(" Do you need visa sponsorship?") not in assistant.cache
+
+
+@pytest.fixture
+def seasoned(tmp_path):
+    profile = {**PROFILE, "years_of_experience": {"python": 3, "sql": 2}}
+    return FormAssistant(profile, "name: Alex", tmp_path, "fake-model", print)
+
+
+@pytest.mark.parametrize("value, accepted", [("15", False), (15, False), ("3.5", False), ("3", True), (0, True)])
+def test_years_answer_above_profile_maximum_is_rejected(seasoned, monkeypatch, value, accepted):
+    fake_llm(monkeypatch, {"answers": {"a": value}, "unknown": []})
+    answers, missing = seasoned.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert (answers == {"a": value}) is accepted
+    assert missing == ([] if accepted else ["Years of experience with Python?"])
+    if not accepted:
+        assert normalize(" Years of experience with Python?") not in seasoned.cache
+
+
+def test_large_number_in_other_questions_is_fine(seasoned, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "4000"}, "unknown": []})
+    answers, _ = seasoned.decide([field("a", "Expected monthly salary", "number")], OFFER)
+    assert answers == {"a": "4000"}
