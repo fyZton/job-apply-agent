@@ -12,7 +12,7 @@ import tempfile
 
 import yaml
 
-from jobagent.safety import DATA_RULE, validate_answers, validate_score, wrap_posting
+from jobagent.safety import DATA_RULE, is_sensitive, validate_answers, validate_score, wrap_fields, wrap_posting
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,8 @@ def score_offer(offer, profile_text, cvs, rules, model):
     """Returns {"fit", "cv", "company", "title", "reason"} or None."""
     cv_list = "\n".join(f'- "{c["file"]}": {c["use_for"]}' for c in cvs)
     rule_list = "\n".join(f"- {r}" for r in rules)
+    posting = wrap_posting("\n".join([f"Source: {offer.site}", f"Link: {offer.url}", f"Title: {offer.title}",
+                                      f"Company: {offer.company}", "Text:", offer.text[:7000]]))
     prompt = f"""{DATA_RULE}
 
 Decide whether this job offer fits the candidate. Be strict and realistic.
@@ -176,8 +178,8 @@ CANDIDATE PROFILE (YAML):
 AVAILABLE CVS:
 {cv_list}
 
-OFFER (source: {offer.site}, link: {offer.url}):
-{wrap_posting(f"Title: {offer.title}{chr(10)}Company: {offer.company}{chr(10)}Text:{chr(10)}{offer.text[:7000]}")}
+OFFER:
+{posting}
 
 Candidate-specific rules:
 {rule_list}
@@ -197,6 +199,26 @@ Reply ONLY with JSON:
     return validate_score(raw, [c["file"] for c in cvs])
 
 
+def _strip_sensitive(node):
+    if isinstance(node, dict):
+        return {k: _strip_sensitive(v) for k, v in node.items() if not is_sensitive(k)}
+    if isinstance(node, list):
+        return [_strip_sensitive(v) for v in node
+                if not (isinstance(v, dict) and is_sensitive(str(v.get("pattern", ""))))]
+    return node
+
+
+def _without_sensitive(profile_text):
+    """The profile as YAML minus keys (and fixed-answer rules) about ids, banking, passwords or birth dates."""
+    try:
+        data = yaml.safe_load(profile_text)
+    except yaml.YAMLError:
+        data = None
+    if not isinstance(data, dict):
+        return "(profile unavailable)"
+    return yaml.safe_dump(_strip_sensitive(data), allow_unicode=True, sort_keys=False)
+
+
 def answer_fields(fields, profile_text, offer, model):
     """Returns {"answers": {id: value}, "unknown": [ids]} or None."""
     prompt = f"""{DATA_RULE}
@@ -205,15 +227,13 @@ You are a candidate's application assistant. Answer the fields of an application
 with TRUE answers based only on their profile.
 
 CANDIDATE PROFILE (YAML):
-{profile_text}
+{_without_sensitive(profile_text)}
 
 OFFER:
 {wrap_posting(f"{offer.title} at {offer.company} ({offer.site})")}
 
 FIELDS (JSON):
-<form_fields>
-{json.dumps(fields, ensure_ascii=False, indent=1).replace("</form_fields>", "[/form_fields]")}
-</form_fields>
+{wrap_fields(fields)}
 
 Rules:
 - Never invent or inflate experience. For "years of experience with X" use years_of_experience from the
