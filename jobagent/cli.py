@@ -3,6 +3,7 @@
   python -m jobagent              apply for real
   python -m jobagent --dry-run    do everything except submitting
   python -m jobagent --login      open every board to log in (first time only)
+  python -m jobagent --setup      create or upgrade profile.yaml by answering questions
   python -m jobagent --only linkedin
   python -m jobagent --demo       run the whole flow on a local fake board, no accounts needed
   python -m jobagent --eval       run the offline evals (add --live to score the configured model)
@@ -22,7 +23,7 @@ from pathlib import Path
 import yaml
 from playwright.sync_api import sync_playwright
 
-from jobagent import evals, llm
+from jobagent import evals, llm, setup
 from jobagent.core import DATA_DIR, SessionExpired, StopRequested, pause, set_stop_check
 from jobagent.forms import FormAssistant
 from jobagent.profile import ProfileError, dump, load_profile
@@ -307,6 +308,11 @@ def demo(headless=False, dry_run=False):
     return run
 
 
+def setup_mode(root=ROOT):
+    """--setup: interview that writes profile.yaml. An existing profile (v1 or v2) is the starting draft."""
+    return setup.setup(root / "profile.yaml", setup.load_draft(root / "profile.yaml"), input, print)
+
+
 LIVE_MIN_PASS_RATE = 0.9
 
 
@@ -352,6 +358,7 @@ def main():
     ap.add_argument("--demo", action="store_true", help="run on a local fake board, no accounts needed")
     ap.add_argument("--eval", action="store_true", help="run the eval suites (offline, fake backend)")
     ap.add_argument("--live", action="store_true", help="with --eval: score the configured backend instead")
+    ap.add_argument("--setup", action="store_true", help="create or upgrade profile.yaml by answering questions")
     ap.add_argument("--headless", action="store_true", help="with --demo: don't show the browser")
     args = ap.parse_args()
     if args.demo:
@@ -359,6 +366,9 @@ def main():
         return
     if args.eval:
         sys.exit(eval_mode(args.live))
+    if args.setup:
+        setup_mode()
+        return
     if os.environ.get("JOBAGENT_LLM") == "fake":
         sys.exit("JOBAGENT_LLM=fake is only allowed with --demo or --eval: "
                  "it would submit canned answers to real boards.")

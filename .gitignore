@@ -1,6 +1,7 @@
 # Personal data: never commit
 /config.yaml
 /profile.yaml
+/profile.yaml.bak
 /cv/
 /data/
 *.xlsx
