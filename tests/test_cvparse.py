@@ -139,12 +139,22 @@ def test_llm_failure_falls_back_to_the_regex_draft(cv_text, monkeypatch):
     logs = []
 
     def boom(text, model=None):
-        raise llm.ConfigError("no claude command")
+        raise llm.LLMTransient("timed out")
 
     monkeypatch.setattr(llm, "extract_cv_facts", boom)
     draft = cvparse.draft_from_text(cv_text, use_llm=True, log=logs.append)
     assert draft["email"] == "alex@example.com" and draft["facts"] == []
-    assert any("no claude command" in m for m in logs)
+    assert any("timed out" in m for m in logs)
+
+
+@pytest.mark.parametrize("error", [llm.ConfigError("no claude command"), llm.BudgetExceeded("over budget")])
+def test_config_and_budget_errors_are_not_swallowed(cv_text, monkeypatch, error):
+    def boom(text, model=None):
+        raise error
+
+    monkeypatch.setattr(llm, "extract_cv_facts", boom)
+    with pytest.raises(type(error)):
+        cvparse.draft_from_text(cv_text, use_llm=True, log=lambda *_: None)
 
 
 def test_cli_from_cv_never_writes_without_the_final_y(tmp_path, monkeypatch):
@@ -430,7 +440,8 @@ def test_cli_asks_before_sending_the_cv(tmp_path, monkeypatch):
     calls = reply(monkeypatch, [])
     prompts = ask_log(monkeypatch, "")
     cli.setup_mode(tmp_path, from_cv=TXT)
-    assert "Send CV text (contact data redacted) to the LLM backend fake? [y/N] " in prompts
+    (question,) = [p for p in prompts if "LLM backend fake" in p]
+    assert "your name and links are still sent" in question and question.endswith("[y/N] ")
     assert calls == []  # the default is no
 
 
@@ -466,3 +477,80 @@ def test_flags_that_need_from_cv(monkeypatch, flags):
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 2
+
+
+# --- quotes at word boundaries, years next to a years word (review round 1) ------------------------------
+
+def test_quote_must_match_at_word_boundaries(monkeypatch):
+    item = {"kind": "skill", "name": "Java", "years": 5, "source": "Java 5 years"}
+    assert facts_for(monkeypatch, "Skills: RxJava 5 years\n", [item]) == []
+    assert [f["id"] for f in facts_for(monkeypatch, "Skills: Java 5 years\n", [item])] == ["skill.java"]
+
+
+@pytest.mark.parametrize("text, source, years, kept", [
+    ("Skills: Python (2018-2023)", "Python 2018 20", 20, False),       # not a years word anywhere
+    ("Skills: Python (2018-2023)", "Python (2018-2023)", 2018, False),  # a calendar year
+    ("Python in 12 projects", "Python in 12 projects", 12, False),      # a count
+    ("Python 5 years", "Python 5 years", 5, True),
+    ("Python 5+ years", "Python 5+ years", 5, True),
+    ("Python 5+ años", "Python 5+ años", 5, True),
+    ("Python years: 5", "Python years: 5", 5, True),
+    ("Python 2 yrs", "Python 2 yrs", 2, True),
+    ("Python 3 years", "Python 3 years", 61, False),
+    ("Python 3 years", "Python 3 years", -3, False),
+])
+def test_years_must_sit_next_to_a_years_word(monkeypatch, text, source, years, kept):
+    facts = facts_for(monkeypatch, text, [{"kind": "skill", "name": "Python", "years": years, "source": source}])
+    assert any("years" in f for f in facts) is kept  # the fact itself may go too, when its quote is not in the CV
+
+
+# --- --from-cv starts from the existing profile ----------------------------------------------------------
+
+def test_from_cv_merges_into_the_existing_profile(tmp_path, monkeypatch):
+    from jobagent import cli
+
+    monkeypatch.setenv("JOBAGENT_LLM", "fake")
+    reply(monkeypatch, [{"kind": "skill", "name": "Python", "years": 3, "source": "Python (3 years)"},
+                        {"kind": "skill", "name": "SQL", "years": 2, "source": "SQL (2 years)"}])
+    (tmp_path / "profile.yaml").write_text(
+        "version: 2\nfirst_name: Sam\nlast_name: Real\nemail: sam@example.com\n"
+        "expected_salary_usd_monthly: 2000\n"
+        "fixed_answers:\n- pattern: notice\n  value: '15'\nscreening_rules:\n- No on-site roles\n"
+        "facts:\n- id: skill.python\n  kind: skill\n  name: Python\n  years: 7\n", encoding="utf-8")
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y" if prompt.startswith(("Overwrite", "Send")) else "")
+    assert cli.setup_mode(tmp_path, from_cv=TXT) is True
+    out = prof.load_profile(tmp_path / "profile.yaml")
+    assert (out["first_name"], out["email"]) == ("Sam", "sam@example.com")  # existing values win
+    assert out["linkedin"].endswith("alex-example")  # the CV fills what was missing
+    assert out["expected_salary_usd_monthly"] == 2000
+    assert out["fixed_answers"] == [{"pattern": "notice", "value": "15"}]
+    assert out["screening_rules"] == ["No on-site roles"]
+    assert {f["id"]: f["years"] for f in out["facts"]} == {"skill.python": 7, "skill.sql": 2}
+
+
+# --- startup and demo guards -----------------------------------------------------------------------------
+
+def test_config_error_at_startup_is_one_line_and_exit_2(monkeypatch, capsys):
+    from jobagent import cli
+
+    def boom(*a, **k):
+        raise llm.ConfigError("No price for model 'x'")
+
+    monkeypatch.setattr(sys, "argv", ["jobagent", "--setup"])
+    monkeypatch.setattr(cli, "setup_mode", boom)
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "No price for model 'x'" in out and "Traceback" not in out and len(out.strip().splitlines()) == 1
+
+
+def test_demo_interrupted_before_the_run_exists_does_not_crash(monkeypatch):
+    from jobagent import cli
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "Run", interrupted)
+    monkeypatch.setattr(cli, "log", lambda *_: None)
+    assert cli.demo(headless=True) is None

@@ -290,6 +290,7 @@ def demo(headless=False, dry_run=False):
     server = ThreadingHTTPServer(("127.0.0.1", 0), partial(_QuietHandler, directory=str(DEMO / "board")))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     cfg["demo_url"] = f"http://127.0.0.1:{server.server_port}"
+    run = None
     try:
         run = Run(cfg, dry_run, root=DEMO, data=data)
         with sync_playwright() as p:
@@ -304,7 +305,8 @@ def demo(headless=False, dry_run=False):
             os.environ.pop("JOBAGENT_LLM", None)
         else:
             os.environ["JOBAGENT_LLM"] = previous_llm
-    report(run, ["demo"])
+    if run is not None:  # None if Ctrl+C came before the run was built
+        report(run, ["demo"])
     log(f"Demo Excel and history are in {data}; logs are in {DATA_DIR / 'logs'}")
     return run
 
@@ -323,11 +325,11 @@ def setup_mode(root=ROOT, from_cv=None, use_llm=True, yes=False):
 
 def _setup(root, from_cv, use_llm, yes):
     path = root / "profile.yaml"
+    existing = setup.load_draft(path, input, print)
+    if existing is None:
+        sys.exit("Nothing written.")
     if not from_cv:
-        draft = setup.load_draft(path, input, print)
-        if draft is None:
-            sys.exit("Nothing written.")
-        return setup.setup(path, draft, input, print)
+        return setup.setup(path, existing, input, print)
     try:
         text = cvparse.extract_text(from_cv)
     except (RuntimeError, ValueError, OSError) as e:  # ValueError includes CVParseError
@@ -336,10 +338,11 @@ def _setup(root, from_cv, use_llm, yes):
     cfg = yaml.safe_load(config.read_text(encoding="utf-8")) or {} if config.exists() else {}
     llm.configure(cfg.get("llm", {}))
     if use_llm and not yes:
-        question = f"Send CV text (contact data redacted) to the LLM backend {llm.backend()}? [y/N] "
+        question = (f"Send CV text to the LLM backend {llm.backend()}? Email addresses, phone numbers and lines "
+                    "about ids, banking or birth dates are removed; your name and links are still sent. [y/N] ")
         use_llm = input(question).strip().lower() in setup.YES
-    return setup.setup(path, cvparse.draft_from_text(text, use_llm, log, (cfg.get("llm") or {}).get("form_model")),
-                       input, print)
+    cv = cvparse.draft_from_text(text, use_llm, log, (cfg.get("llm") or {}).get("form_model"))
+    return setup.setup(path, setup.merge_draft(existing, cv), input, print)
 
 
 LIVE_MIN_PASS_RATE = 0.9
@@ -380,6 +383,14 @@ def eval_mode(live, cfg=None):
 
 
 def main():
+    try:
+        _main()
+    except llm.ConfigError as e:
+        print(f"LLM configuration problem: {e}")
+        sys.exit(2)
+
+
+def _main():
     ap = argparse.ArgumentParser(prog="jobagent")
     ap.add_argument("--dry-run", action="store_true", help="do everything except submitting")
     ap.add_argument("--login", action="store_true", help="open the boards to log in")

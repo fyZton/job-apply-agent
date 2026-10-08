@@ -46,6 +46,7 @@ ESTIMATED_OUTPUT_TOKENS = 1000  # floor used when the CLI reports no usage
 
 _cfg = {k: dict(v) if isinstance(v, dict) else v for k, v in DEFAULTS.items()}
 USAGE = {}
+_warned_unpriced = False
 
 
 class LLMError(Exception):
@@ -65,6 +66,8 @@ class LLMTransient(LLMError):
 
 
 def reset_usage():
+    global _warned_unpriced
+    _warned_unpriced = False
     USAGE.clear()
     USAGE.update(calls=0, input_tokens=0, output_tokens=0, cost_usd=0.0, by_model={})
 
@@ -83,7 +86,7 @@ def configure(llm_cfg):
             merged[key] = value
     _cfg = merged
     reset_usage()
-    if backend() != "fake":
+    if backend() == "api":  # the claude CLI reports its own cost, so its aliases need no price
         for alias in (_cfg.get("score_model"), _cfg.get("form_model")):
             if alias:
                 _price(model_id(alias))
@@ -117,9 +120,19 @@ def _check_budget():
 
 def _record(model, input_tokens, output_tokens, cost=None):
     """Adds one call to USAGE and raises BudgetExceeded when the run is over budget."""
+    global _warned_unpriced
     model = model_id(model)
     if cost is None:
-        price_in, price_out = _price(model)
+        try:
+            price_in, price_out = _price(model)
+        except ConfigError:
+            if backend() == "api":
+                raise
+            if not _warned_unpriced:  # the call still counts toward max_calls_per_run
+                _warned_unpriced = True
+                logger.warning("The claude CLI reported no cost and %s has no price: its cost is counted as $0, "
+                               "only max_calls_per_run limits this run", model)
+            price_in = price_out = 0
         cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
     per_model = USAGE["by_model"].setdefault(model, dict(calls=0, input_tokens=0, output_tokens=0, cost_usd=0.0))
     for d in (USAGE, per_model):
@@ -239,7 +252,10 @@ def extract_json(text):
 def ask_json(prompt, model="sonnet", attempts=2):
     """Sends the prompt to the LLM and returns the JSON in its answer, or None."""
     for _ in range(attempts):
-        data = extract_json(_complete(prompt, model))
+        text = _complete(prompt, model)
+        if text is None:  # refused: asking again will not change that
+            return None
+        data = extract_json(text)
         if data is not None:
             return data
     return None

@@ -312,6 +312,19 @@ def load_draft(path, ask=input, out=print):
     return migrate(data)
 
 
+def merge_draft(existing, cv):
+    """The existing profile draft with what a CV adds: CV values fill fields that are missing or empty, and CV
+    facts whose id is not already there are appended. Everything the user already has is kept."""
+    merged = dict(existing)
+    for key, value in cv.items():
+        if key == "facts":
+            have = {f.get("id") for f in merged.get("facts") or [] if isinstance(f, dict)}
+            merged["facts"] = [*(merged.get("facts") or []), *(f for f in value if f["id"] not in have)]
+        elif merged.get(key) in (None, "", [], {}):
+            merged[key] = value
+    return merged
+
+
 def setup(path, draft=None, ask=input, out=print):
     """Interview, then write `path` if the user confirms (one question). True if a file was written."""
     path = Path(path)

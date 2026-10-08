@@ -99,11 +99,26 @@ JS_SCAN = r"""
 
 PLACEHOLDER = re.compile(r"^(select|selecciona|seleccionar|choose|elige|escoge|--|-)", re.I)
 YEARS_QUESTION = re.compile(r"\byears?\b|\baños\b", re.I)
-# "years of experience with Rust": the word after the preposition is the skill the question is about.
-SKILL_ASKED = re.compile(r"\b(?:experience|years?|a\u00f1os|experiencia)\s+(?:of\s+experience\s+)?"
-                         r"(?:with|in|of|using|on|con|en|de)\s+(?:the\s+|a\s+|an\s+)?([\w+#.]+)", re.I)
-GENERIC = {"total", "overall", "professional", "relevant", "similar", "related", "this", "that", "your", "our",
-           "work", "working", "industry", "the", "total."}
+# What a years question is about: the word after "with|in|of|using|on|con|en|de|usando" or before "experience".
+ABOUT = re.compile(r"\b(?:with|in|of|using|on|con|en|de|usando)\s+(?:(?:the|a|an|el|la|un|una)\s+)?([\w+#.-]+)"
+                   r"|([\w+#.-]+)\s+experience\b", re.I)
+NOT_A_SKILL = set(
+    "experience experiencia years year a\u00f1os a\u00f1o professional profesional total overall work working trabajo "
+    "relevant relevante industry the a an your tu su do you have tienes tiene how many much cu\u00e1ntos cuantos "
+    "field area role position puesto software development desarrollo programming programaci\u00f3n this that our "
+    "similar related of in".split())
+
+
+def _lower_bound(option):
+    """The least number of years an option claims: "3-5" is 3, "5+" is 5, "Less than 1" is 0, "M\u00e1s de 3" is 3.
+    None when the option has no number."""
+    text = str(option).lower()
+    m = re.search(r"\d+(?:[.,]\d+)?", text)
+    if not m:
+        return None
+    if re.search(r"less than|under|up to|menos de|hasta|<", text[:m.start()]):
+        return 0.0
+    return float(m.group().replace(",", "."))
 IS_CV = re.compile(r"resume|curr[ií]cul|\bcv\b|hoja de vida", re.I)
 
 
@@ -175,31 +190,48 @@ class FormAssistant:
             return best_option(value, field["options"]) is not None
         return value not in (None, "")
 
-    def _overstates_years(self, field, value):
-        """True if a years-of-experience answer claims more than the profile does.
-
-        The answer's largest number (so "5+" is 5 and "5-7" is 7) is compared with the years of the skill the
-        question names, or with the profile's maximum when no skill matches."""
-        text = f'{field.get("context", "")} {field["question"]}'
+    def _years_scope(self, text):
+        """None if `text` is not a years question (or a v1 profile has no years). Otherwise (kind, names, limit):
+        "named" (it names profile skills: limit is the best of their years), "other" (it names something that
+        is not a profile skill: limit 0) or "generic" (names nothing: limit is the profile's best skill)."""
+        if not YEARS_QUESTION.search(text):
+            return None
         if self.facts:
             skills = {f.text.lower(): float(f.years or 0) for f in self.facts.values() if f.kind == "skill"}
             named = {f.text.lower(): float(f.years or 0) for f in match_skills(self.facts, text)}
         else:
             skills = {str(k).lower(): v for k, v in (self.profile.get("years_of_experience") or {}).items()
                       if isinstance(v, int | float) and not isinstance(v, bool)}
-            named = None
-        if not skills or not YEARS_QUESTION.search(text):
-            return False
-        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
-        if not numbers:
-            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}")
-            return False
-        if named is None:
+            if not skills:
+                return None
             words = set(re.findall(r"\w+", text.lower()))
             named = {k: v for k, v in skills.items() if set(k.split("_")) <= words}
-        limit_name, limit = max(named.items(), key=lambda kv: kv[1]) if named else ("any skill", max(skills.values()))
-        if max(numbers) > limit:
-            self.log(f"years answer {max(numbers):g} is above the profile's {limit:g} ({limit_name}); not used")
+        if named:
+            return "named", set(named), max(named.values())
+        if any(not w.isdigit() and w not in NOT_A_SKILL
+               for w in (m.strip(".-").lower() for g in ABOUT.findall(text) for m in g if m)):
+            return "other", set(), 0.0
+        return "generic", set(), max(skills.values(), default=0.0)
+
+    def _overstates_years(self, field, value):
+        """True if a years-of-experience answer claims more than the profile does (see _years_scope).
+
+        A number or text answer is compared by its largest number (so "5+" is 5 and "5-7" is 7). For a select or
+        radio, the chosen option's lower bound is used ("3-5" is 3, "Less than 1" is 0)."""
+        scope = self._years_scope(f'{field.get("context", "")} {field["question"]}')
+        if scope is None:
+            return False
+        options = field.get("options")
+        if options and (i := best_option(value, options)) is not None:
+            claimed = _lower_bound(options[i])
+        else:
+            numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
+            claimed = max(numbers, default=None)
+        if claimed is None:
+            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}")
+            return False
+        if claimed > scope[2]:
+            self.log(f"years answer {claimed:g} is above the profile's {scope[2]:g} ({', '.join(sorted(scope[1])) or scope[0]}); not used")
             return True
         return False
 
@@ -228,16 +260,16 @@ class FormAssistant:
             self.log(f"answer for {field['question'][:60]!r} cites unknown facts {unknown}; not used")
             return False
         text = f'{field.get("context", "")} {field["question"]}'
-        if field["type"] not in ("number", "text", "textarea") or not YEARS_QUESTION.search(text):
+        scope = self._years_scope(text)
+        if field["type"] not in ("number", "text", "textarea") or scope is None:
             return True
         numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
         if numbers and max(numbers) == 0:
             return True
         label = field["question"][:60]
-        named = {f.text.lower() for f in match_skills(self.facts, text)}
-        asked = SKILL_ASKED.search(text)
-        if not named and asked and asked[1].lower() not in GENERIC:
-            self.log(f"years answer for {label!r} asks about {asked[1]!r}, which is not in the profile; "
+        kind, named, _ = scope
+        if kind == "other":
+            self.log(f"years answer for {label!r} asks about something that is not in the profile; "
                      "only 0 is allowed")
             return False
         skills = [self.facts[i] for i in cited if self.facts[i].kind == "skill"]

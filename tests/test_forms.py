@@ -373,3 +373,69 @@ def test_v2_profile_without_skills_sends_years_questions_to_manual(tmp_path, mon
     assert calls == [["b"]]  # the years question never reached the model
     a.decide(fields, OFFER)
     assert sum("no skills" in m for m in logs) == 1  # warned once
+
+
+# --- what a years question is about (review round 1) -----------------------------------------------------
+
+PY5 = [{"id": "skill.python", "kind": "skill", "name": "Python", "years": 5}]
+
+
+def years_assistant(tmp_path):
+    return FormAssistant({**PROFILE, "facts": PY5}, "name: Alex", tmp_path, "m", lambda *_: None)
+
+
+def ask_years(tmp_path, monkeypatch, question, type_, value, ids=("skill.python",), **extra):
+    reply = {"answers": {"a": value}, "facts": {"a": list(ids)}, "unknown": []}
+    fake_llm(monkeypatch, reply)
+    (tmp_path / value).mkdir(exist_ok=True)  # a fresh learned_answers.json per call
+    return years_assistant(tmp_path / value).decide([field("a", question, type_, **extra)], OFFER)[0]
+
+
+@pytest.mark.parametrize("question", [
+    "How many years of experience do you have?", "Years of experience", "¿Cuántos años de experiencia tienes?",
+    "How many years of professional experience do you have in total?",
+])
+def test_generic_years_question_accepts_up_to_the_best_skill(tmp_path, monkeypatch, question):
+    assert ask_years(tmp_path, monkeypatch, question, "number", "3") == {"a": "3"}
+    assert ask_years(tmp_path, monkeypatch, question, "number", "6") == {}
+
+
+@pytest.mark.parametrize("question, type_", [
+    ("How many years have you worked with Rust?", "text"),
+    ("How many years have you worked with Rust?", "number"),
+    ("How many years of Rust experience?", "number"),
+    ("¿Cuántos años de experiencia con Kubernetes?", "number"),
+])
+def test_years_of_something_not_in_the_profile_only_allows_zero(tmp_path, monkeypatch, question, type_):
+    assert ask_years(tmp_path, monkeypatch, question, type_, "5") == {}
+    assert ask_years(tmp_path, monkeypatch, question, type_, "0") == {"a": "0"}
+
+
+@pytest.mark.parametrize("question, options, value, accepted", [
+    ("Years of experience with Rust", ["0", "1-2", "3-5"], "3-5", False),
+    ("Years of experience with Rust", ["0", "1-2", "3-5"], "0", True),
+    ("Years of experience with Rust", ["Less than 1", "1-2", "3-5"], "Less than 1", True),
+    ("How many years of Kubernetes experience?", ["0", "5+"], "5+", False),
+    ("How many years of Kubernetes experience?", ["0", "5+"], "0", True),
+    ("Years of experience with Python", ["0", "1-2", "3-5", "5+"], "5+", True),
+    ("Years of experience with Python", ["0", "1-2", "3-5", "Más de 7"], "Más de 7", False),
+    ("Years of experience", ["0", "1-2", "3-5", "5+", "8+"], "8+", False),
+    ("Years of experience", ["0", "1-2", "3-5", "5+", "8+"], "3-5", True),
+])
+@pytest.mark.parametrize("type_", ["select", "radio"])
+def test_years_choice_is_checked_by_the_options_lower_bound(tmp_path, monkeypatch, question, options, value,
+                                                            accepted, type_):
+    fake_llm(monkeypatch, {"answers": {"a": value}, "unknown": []})
+    answers, _ = years_assistant(tmp_path).decide([field("a", question, type_, options=options)], OFFER)
+    assert answers == ({"a": value} if accepted else {})
+
+
+def test_cached_years_answers_get_the_same_check(tmp_path, monkeypatch):
+    calls = fake_llm(monkeypatch, {"answers": {}, "unknown": []})
+    a = years_assistant(tmp_path)
+    a.cache[normalize(" How many years have you worked with Rust?")] = "5"
+    answers, _ = a.decide([field("a", "How many years have you worked with Rust?", "number")], OFFER)
+    assert answers == {} and calls == [["a"]]  # not reused: went to the model, which said nothing
+    a.cache[normalize(" Years of experience with Rust")] = "3-5"
+    answers, _ = a.decide([field("b", "Years of experience with Rust", "select", options=["0", "3-5"])], OFFER)
+    assert answers == {}

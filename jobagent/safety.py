@@ -33,7 +33,8 @@ _PATTERNS = [
      r"\b(ignore|disregard|forget)\s+(all\s+|any\s+)?(the\s+)?(previous|prior|above|earlier)\s+(instructions|prompts?|rules)"),
     ("disregard-everything-above", r"\b(ignore|disregard|forget)\s+(everything|all)\s+(above|before|prior|previous)\b"),
     ("new-instructions", r"\bnew\s+instructions\s*:"),
-    ("ignora-instrucciones", r"\bignora\s+(todas\s+)?(las\s+)?instrucciones(\s+anteriores)?"),
+    ("ignora-instrucciones", r"\b(ignora|olvida)\s+(todas\s+)?(las\s+)?instrucciones(\s+anteriores)?"),
+    ("ignore-the-above", r"\b(ignore|disregard)\s+(all\s+)?(of\s+)?the\s+above\b"),
     ("system-prompt", r"\bsystem\s+prompt\b"),
     ("you-are-now",
      r"\bfrom\s+now\s+on\s+you\b|\byou\s+are\s+now\s+(a|an|the)\s+(\w+\s+){0,3}"

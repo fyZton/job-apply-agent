@@ -144,12 +144,23 @@ MAX_QUOTE = 300
 def _quote(value, haystack):
     """The normalised quote if it is long enough and is in the CV text, else None."""
     q = _norm(value[:MAX_QUOTE]) if isinstance(value, str) else ""
-    return q if len(q) >= MIN_QUOTE and q in haystack else None
+    if len(q) < MIN_QUOTE or not re.search(rf"(?<![a-z0-9+#]){re.escape(q)}(?![a-z0-9+#])", haystack):
+        return None
+    return q
+
+
+# A number of years: "5 years", "5+ years", "years 5". _norm turns "años" into "a os" and a decimal comma into
+# a space, so "1,5 years" has no number here (the lookbehind skips the "5") and is left out rather than read as 5.
+_YEARS_WORD = r"(?:years?|yrs?|a os?)"
+YEARS_IN_QUOTE = re.compile(rf"(?<!\d)(?<!\d )(\d{{1,2}})\+?\s*{_YEARS_WORD}\b|\b{_YEARS_WORD}\s+(\d{{1,2}})(?!\d)")
+MAX_YEARS = 60
 
 
 def _number_in(value, q):
-    numbers = {float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", q)}
-    return isinstance(value, int | float) and not isinstance(value, bool) and float(value) in numbers
+    """The value is a number of years (0 to 60) written next to a years word in the quote."""
+    numbers = {float(a or b) for a, b in YEARS_IN_QUOTE.findall(q)}
+    return (isinstance(value, int | float) and not isinstance(value, bool) and 0 <= value <= MAX_YEARS
+            and float(value) in numbers)
 
 
 def _date_in(value, q):
@@ -228,6 +239,8 @@ def draft_from_text(text, use_llm=True, log=print, model=None):
         log(f"The CV is long: only the first {MAX_CHARS} characters are sent to the LLM (truncated).")
     try:
         items = llm.extract_cv_facts(sent[:MAX_CHARS], model)
+    except (llm.BudgetExceeded, llm.ConfigError):
+        raise
     except llm.LLMError as e:
         log(f"Could not ask the LLM for facts ({e}); only contact details were read.")
         return draft

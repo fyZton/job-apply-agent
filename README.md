@@ -107,15 +107,17 @@ Why ids:
 
 - **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`. Only an answer that claims
   experience has to cite: a years question in a number, text or text area field must come back with the ids it
-  relies on, as `{"value": "3", "facts": ["skill.python"]}`. The cited facts must include the skill the question
-  names, and the answer cannot be above that skill's years. If the question names no skill, the limit is the
-  largest years among the cited skill facts; if it names a skill that is not in the profile, only `0` is
-  accepted. A plain `0` needs no citation. Salary, notice period, city and similar fields need no citation (the
+  relies on, as `{"value": "3", "facts": ["skill.python"]}`. A years question is one of three kinds. If it
+  names a profile skill, the cited facts must include that skill and the answer cannot be above its years (the
+  best of them if it names several). If it names something that is not a profile skill (`Rust`, `Kubernetes`,
+  also in `years of Rust experience` or `worked with Rust`), only `0` is accepted. If it names nothing (`years of
+  experience`, `¿cuántos años de experiencia tienes?`), any cited skill fact will do and the limit is the
+  largest years among the cited skill facts. A plain `0` needs no citation. Salary, notice period, city and similar fields need no citation (the
   fixed answers and the profile values cover them), and a free-text answer may cite nothing when it uses no fact.
   Any cited id that doesn't exist rejects the answer, and a rejected field goes to manual review. A version 2
   profile with no skill facts sends every years question to manual review and logs one warning. The years check
   described under [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without
-  facts keeps the old behavior, and a plain value is still accepted for select, radio and checkbox fields.
+  facts keeps the old behavior, and select and radio fields need no citation but get the same years limit.
 - **CV generation.** The planned CV generator will pick and reorder facts by id, so a tailored CV can only
   contain what is in the profile.
 
@@ -155,12 +157,17 @@ files stop with a one-line message.
 
 The CV text is also sent to the configured LLM backend (using `llm.form_model`) to propose facts. Before that,
 emails, phone numbers and lines about IDs, bank data or birth dates are replaced with placeholders, and you are
-asked `Send CV text (contact data redacted) to the LLM backend <name>? [y/N]`. `--yes` skips the question and
-`--no-llm` skips the LLM step; both options need `--from-cv`. The model must give each fact with a quote from the
+asked `Send CV text to the LLM backend <name>? ... [y/N]`; the question says that your name and links are still
+sent. `--yes` skips the question and
+`--no-llm` skips the LLM step; both options need `--from-cv`. The CV is merged into your existing
+`profile.yaml`: your values, fixed answers, screening rules and facts are kept, and the CV only fills what is
+missing and adds new facts. The model must give each fact with a quote from the
 CV. A fact is kept only if the quote is in the CV text and contains the fact's name (whole words, so `C` does not
 match `chemistry` or `C++`). Every number or date the model claims, such as years, a year, start and end dates or a
 language level, must also be in the quote; one that is not is left out, logged as `unverified`, and the rest of the
-fact is kept. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
+fact is kept. A years value must be a number from 0 to 60 written next to `year`, `years`, `yr`, `yrs` or `años`
+in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years.
+Quotes must match at word boundaries, so `Java 5 years` is not backed by `RxJava 5 years`. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
 log by reason (not backed by the CV, or invalid).
 
 CV text is untrusted like a job posting: if it looks like a prompt injection the LLM step is skipped and you are
@@ -199,8 +206,9 @@ turns on the server-side refusal fallback beta, which exists only on the Claude 
 request the call returns nothing and the offer is skipped.
 
 Every call is counted. The end-of-run summary shows calls, tokens and estimated cost per model. Prices come from
-`llm.prices_usd_per_mtok` (aliases go through `llm.api_models` first, and a model without a price is a
-configuration error, not a free call). The budget is checked before every call and after it: the run stops when the
+`llm.prices_usd_per_mtok` (aliases go through `llm.api_models` first, and with the `api` backend a model
+without a price is a configuration error, not a free call; with `claude` the CLI reports the cost, and a model
+without a price counts as $0 with one warning, but still counts toward `max_calls_per_run`). The budget is checked before every call and after it: the run stops when the
 estimate passes `llm.max_cost_usd_per_run` (default 1.0) or the number of calls reaches `llm.max_calls_per_run`
 (default 300). Set either one to `null` to turn that limit off. With the `claude` backend the cost comes from the
 CLI's own report, or from the prompt size if the CLI prints plain text. Nested settings such as `api_models` are
@@ -238,9 +246,12 @@ Job postings and form labels are written by third parties and end up in the prom
 3. **Output validation.** Whatever the model returns is checked before use. A score must be an integer from 1 to
    10, and the CV name must be one of the configured files. Form answers are kept only for field ids that
    exist, values must be plain strings, numbers or booleans, and text is capped at 200 characters (2000 for
-   text areas). A years-of-experience answer (also one read from the cache) is rejected if its largest number
-   ("5+" is 5, "5-7" is 7) is above the profile's years for the skill the question names, or above the profile's
-   maximum when no skill matches, and the field is left for you to fill in by hand. With facts in the profile,
+   text areas). A years-of-experience answer (also one read from the cache, and also in select and radio
+   fields) is rejected if it is above the limit of the question: the profile's years for the skill it names, 0
+   when it names something that is not in the profile, or the profile's best skill when it names nothing. For
+   a number or text answer the largest number counts ("5+" is 5, "5-7" is 7); for a select or radio option its
+   lower bound counts ("3-5" is 3, "Less than 1" is 0, "Más de 3" is 3). A rejected field is left for you to
+   fill in by hand. With facts in the profile,
    a years-of-experience answer must also cite the skill fact it relies on (see
    [Profile and facts](#profile-and-facts)). A score whose CV name isn't one of the configured files is rejected too.
 

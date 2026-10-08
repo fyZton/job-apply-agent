@@ -244,7 +244,32 @@ def test_configure_deep_merges_nested_dicts():
 
 def test_unpriced_model_is_a_config_error_at_configure_time():
     with pytest.raises(llm.ConfigError, match="my-model"):
-        llm.configure({"api_models": {"haiku": "my-model"}, "score_model": "haiku"})
+        llm.configure({"backend": "api", "api_models": {"haiku": "my-model"}, "score_model": "haiku"})
+
+
+def test_claude_cli_alias_needs_no_price(monkeypatch, caplog):
+    llm.configure({"api_models": {"haiku": "my-model"}, "score_model": "haiku", "max_calls_per_run": 2})
+    out = json.dumps({"result": "{}", "usage": {"input_tokens": 10, "output_tokens": 5}})
+    run_claude(monkeypatch, out)
+    llm._complete("hi", "haiku")
+    llm._complete("hi", "haiku")
+    assert llm.USAGE["calls"] == 2 and llm.USAGE["cost_usd"] == 0
+    assert caplog.text.count("has no price") == 1  # warned once
+    with pytest.raises(llm.BudgetExceeded):
+        llm._complete("hi", "haiku")  # unpriced calls still count toward the cap
+
+
+def test_claude_cli_reported_cost_is_used_without_a_price(monkeypatch):
+    llm.configure({"api_models": {"haiku": "my-model"}})
+    run_claude(monkeypatch, json.dumps({"result": "{}", "total_cost_usd": 0.25, "usage": {}}))
+    llm._complete("hi", "haiku")
+    assert llm.USAGE["cost_usd"] == pytest.approx(0.25)
+
+
+def test_ask_json_does_not_retry_after_a_refusal(monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm, "_complete", lambda prompt, model: calls.append(1))
+    assert llm.ask_json("hi") is None and len(calls) == 1
 
 
 def test_unpriced_model_is_a_config_error_on_first_use(sdk):
