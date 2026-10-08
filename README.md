@@ -104,8 +104,25 @@ turns on the server-side refusal fallback beta, which exists only on the Claude 
 request the call returns nothing and the offer is skipped.
 
 Every call is counted. The end-of-run summary shows calls, tokens and estimated cost per model. Prices come from
-`llm.prices_usd_per_mtok`, and the run stops when the estimate passes `llm.max_cost_usd_per_run`. With the `claude`
-backend the cost comes from the CLI's own report. Update the model IDs and prices in `config.yaml` when they change.
+`llm.prices_usd_per_mtok` (aliases go through `llm.api_models` first, and a model without a price is a
+configuration error, not a free call). The budget is checked before every call and after it: the run stops when the
+estimate passes `llm.max_cost_usd_per_run` (default 1.0) or the number of calls reaches `llm.max_calls_per_run`
+(default 300). Set either one to `null` to turn that limit off. With the `claude` backend the cost comes from the
+CLI's own report, or from the prompt size if the CLI prints plain text. Nested settings such as `api_models` are
+merged with the defaults, so you only list what you change. Update the model IDs and prices when they change.
+
+Errors are not all treated the same:
+
+| Error | What happens |
+|---|---|
+| Bad or missing credentials (401, 403), unknown model (404), missing SDK or `claude` command, unpriced model | `ConfigError`: the whole run stops, with the reason in the log |
+| Over budget or over the call cap | The whole run stops |
+| Rate limit, 5xx, network failure, timeout | Logged with the status code. The offer counts as an LLM failure, and three in a row stop the run |
+| Bad request (400) | Logged, not retried, counted as an LLM failure |
+| The model refuses, or its reply is not valid JSON | Logged, the offer is skipped |
+
+The optional test `JOBAGENT_LIVE_API=1 pytest tests/test_live_api.py` makes one tiny real call per model alias to
+check the SDK parameter names. It never runs in CI.
 
 ## Prompt-injection defense
 
@@ -113,17 +130,29 @@ Job postings and form labels are written by third parties and end up in the prom
 
 1. **Detector.** Before any LLM call, the posting goes through `looks_injected` (`jobagent/safety.py`). It looks
    for phrases like "ignore previous instructions" (English and Spanish), "system prompt", "you are now", role
-   markers at the start of a line, requests to score the candidate 10, `"fit": 10`, fake `<job_posting>` tags and
-   zero-width characters. A hit skips the offer, adds a "To apply" row with the reasons in Notes, and makes no
+   markers (`assistant:`, `### system`, or `system:` followed by an instruction), requests to score the candidate 10,
+   `"fit": 10`, fake `<job_posting>` tags and zero-width characters. Text is normalised first (NFKC, format
+   characters removed), so fullwidth letters and invisible characters in the middle of a word don't hide a phrase.
+   A hit skips the offer, adds a "To apply" row with the reasons in Notes, and makes no LLM call. The same check
+   runs on every form field's label, context and options: one hit sends the whole form to manual review with no
    LLM call. It is a tripwire for obvious attacks and will miss a careful one.
 2. **Data framing.** The posting is wrapped in `<job_posting>` and the form fields in `<form_fields>`, and the
-   prompt says that text inside those tags is data, never instructions. A closing tag inside the posting is
-   rewritten so it can't end the block early.
+   prompt says that text inside those tags is data, never instructions. Any tag of that name inside the
+   text (opening or closing, any case, spaces, fullwidth brackets) is rewritten so it can't end the block early.
+   The offer URL and board name go inside the wrapped block too.
 3. **Output validation.** Whatever the model returns is checked before use. A score must be an integer from 1 to
    10, and the CV name must be one of the configured files. Form answers are kept only for field ids that
    exist, values must be plain strings, numbers or booleans, and text is capped at 200 characters (2000 for
-   text areas). A years-of-experience answer above the largest value in the profile is rejected and the field
-   is left for you to fill in by hand.
+   text areas). A years-of-experience answer (also one read from the cache) is rejected if its largest number
+   ("5+" is 5, "5-7" is 7) is above the profile's years for the skill the question names, or above the profile's
+   maximum when no skill matches, and the field is left for you to fill in by hand. A score whose CV name isn't
+   one of the configured files is rejected too.
+
+**Sensitive fields.** A field asking for a government or national ID, passport, SSN, IBAN or bank account,
+routing number, credit card, password or date of birth is never answered by the model and never read from the
+learned-answers cache. It gets an answer only from an explicit rule in `fixed_answers`; otherwise a required one
+sends the application to manual review and an optional one is left empty. Keys of that kind are also removed from
+the profile text sent in the form prompt, so put such a value in `fixed_answers` only if you want it filled in.
 
 The model also runs with no tools, so a successful injection can change a score or a form answer but can't run
 anything. Only put in `profile.yaml` what you would be fine sharing with an employer, since form answers are
@@ -132,9 +161,11 @@ git-ignored.
 
 ## Stopping a run (data/STOP)
 
-Create an empty file named `STOP` in the data folder (`data/STOP` by default) and the run stops before the next
-offer. The log says `STOP file found; delete it to run again`. The agent never deletes the file, so it keeps
-blocking runs until you remove it.
+Create an empty file named `STOP` in the data folder (`data/STOP` by default) and the run stops. It is checked
+when the run starts, before every offer, about once a second during the pauses between steps, and right before
+each final submit, so a run that is waiting or filling a form stops without sending. If the file can't be checked
+(permissions, disk error) the run also stops. The log says `STOP file found; delete it to run again`. The agent
+never deletes the file, so it keeps blocking runs until you remove it.
 
 ```bash
 touch data/STOP     # stop
@@ -145,8 +176,11 @@ rm data/STOP        # allow runs again
 
 ```bash
 python -m jobagent --eval           # offline, fake backend, exit code 1 if any case fails
-python -m jobagent --eval --live    # sends the cases to the configured backend, reports pass rates only
+python -m jobagent --eval --live    # sends the cases to the configured backend and measures the model
 ```
+
+`--eval` reads the cases from the `evals/` folder, so it runs from a source checkout (`pip install -e .`), not from
+an installed wheel. If the folder is missing or empty it stops with an error.
 
 The cases are YAML files in `evals/`: `fit.yaml` (offers the candidate should score high or low on, and which
 CV to pick), `honesty.yaml` (form answers must come from the profile, not from the model's imagination) and
@@ -154,10 +188,12 @@ CV to pick), `honesty.yaml` (form answers must come from the profile, not from t
 Injection cases marked `bypass_detector: true` skip the detector and go straight to the scorer, which has to
 keep its score in range anyway.
 
-Offline evals test the pipeline around the model: the detector, validation, length caps and the years check. The
-fake backend behaves like an honest model, so passing offline says nothing about how a real model behaves.
-`--live` is the run that measures the model, and it costs tokens. Each run writes
-`data/evals/report-YYYYMMDD-HHMM.json` and `.md`:
+The offline pass rates below test the pipeline around the model (the detector, validation, length caps and the
+years check) with a deterministic fake. The fake behaves like an honest model, so passing offline says nothing
+about how a real model behaves. `--live` is the run that measures the model, and it costs tokens. It skips the
+cases that force a model reply (they only make sense offline) and says how many. It exits with 1 if the overall
+pass rate is under `evals.live_min_pass_rate` (default 0.9), if nothing ran, or if the budget ran out; in that last
+case the report still lists what was measured. Each run writes `data/evals/report-YYYYMMDD-HHMMSS.json` and `.md`:
 
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
