@@ -199,3 +199,111 @@ def test_forced_reply_is_passed_to_the_llm_call(tmp_path, monkeypatch):
     seen.clear()
     FormAssistant(PROFILE, "name: Alex", tmp_path, "m", print).decide([field("a", "Referral code")], OFFER)
     assert seen == {}
+
+
+FACTS = [
+    {"id": "skill.python", "kind": "skill", "name": "Python", "years": 3},
+    {"id": "skill.sql", "kind": "skill", "name": "SQL", "years": 2},
+    {"id": "lang.english", "kind": "language", "name": "English", "level": "B2"},
+]
+
+
+@pytest.fixture
+def grounded(tmp_path):
+    logs = []
+    a = FormAssistant({**PROFILE, "facts": FACTS}, "name: Alex", tmp_path, "fake-model", logs.append)
+    a.logs = logs
+    return a
+
+
+def cite(value, *ids):
+    return {"value": value, "facts": list(ids)}
+
+
+def test_cited_years_answer_is_accepted(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.python"]}, "unknown": []})
+    answers, missing = grounded.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {"a": "3"} and missing == []
+
+
+def test_unknown_fact_citation_is_rejected(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.python", "skill.cobol"]}, "unknown": []})
+    answers, missing = grounded.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {} and missing == ["Years of experience with Python?"]
+    assert any("skill.cobol" in m for m in grounded.logs)
+
+
+def test_years_above_cited_fact_is_rejected(grounded, monkeypatch):
+    # Python is 3 years, but the answer cites SQL (2): the cited fact does not back "3".
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.sql"]}, "unknown": []})
+    answers, missing = grounded.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {} and missing == ["Years of experience with Python?"]
+    assert any("skill.sql" in m for m in grounded.logs)
+
+
+def test_years_answer_cites_a_fact_without_years_is_rejected(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "2"}, "facts": {"a": ["lang.english"]}, "unknown": []})
+    answers, _ = grounded.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {}
+
+
+def test_number_without_citation_is_rejected(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "unknown": []})
+    answers, missing = grounded.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {} and missing and any("cite" in m for m in grounded.logs)
+
+
+def test_zero_needs_no_citation(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "0"}, "unknown": []})
+    answers, _ = grounded.decide([field("a", "Years of experience with Rust?", "number")], OFFER)
+    assert answers == {"a": "0"}
+
+
+def test_textarea_without_citation_is_rejected(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "I love backend work."}, "unknown": []})
+    answers, missing = grounded.decide([field("a", "Why do you want this job?", "textarea")], OFFER)
+    assert answers == {} and missing == ["Why do you want this job?"]
+
+
+def test_textarea_with_known_citation_is_accepted(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "I work with Python."}, "facts": {"a": ["skill.python"]},
+                           "unknown": []})
+    answers, _ = grounded.decide([field("a", "Why do you want this job?", "textarea")], OFFER)
+    assert answers == {"a": "I work with Python."}
+
+
+def test_plain_text_reply_is_still_accepted_for_text_fields(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "Caracas"}, "unknown": []})
+    answers, _ = grounded.decide([field("a", "Current city")], OFFER)
+    assert answers == {"a": "Caracas"}
+
+
+def test_unknown_citation_on_a_text_field_is_rejected(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "Yes"}, "facts": {"a": ["cert.invented"]}, "unknown": []})
+    answers, _ = grounded.decide([field("a", "Do you hold a cloud certificate?")], OFFER)
+    assert answers == {}
+
+
+def test_years_cap_uses_facts(grounded, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.sql"]}, "unknown": []})
+    answers, _ = grounded.decide([field("a", "How many years of experience with SQL?", "number")], OFFER)
+    assert answers == {}  # SQL is 2 in the facts
+    grounded.cache[normalize(" Years of experience with Python?")] = "15"
+    fake_llm(monkeypatch, {"answers": {"b": "3"}, "facts": {"b": ["skill.python"]}, "unknown": []})
+    answers, _ = grounded.decide([field("b", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {"b": "3"}  # the inflated cached "15" was not reused
+
+
+def test_facts_are_passed_to_the_llm_only_when_the_profile_has_them(grounded, assistant, monkeypatch):
+    seen = []
+    monkeypatch.setattr(llm, "answer_fields", lambda fields, *a, **kw: seen.append(kw) or {"answers": {}})
+    grounded.decide([field("a", "Referral code")], OFFER)
+    assistant.decide([field("a", "Referral code")], OFFER)
+    assert set(seen[0]) == {"facts"} and "skill.python" in seen[0]["facts"] and seen[1] == {}
+
+
+def test_v1_profile_dict_path_is_unchanged(seasoned, monkeypatch):
+    fake_llm(monkeypatch, {"answers": {"a": "3", "b": "Because Python."}, "unknown": []})
+    fields = [field("a", "Years of experience with Python?", "number"), field("b", "Why?", "textarea")]
+    answers, _ = seasoned.decide(fields, OFFER)
+    assert answers == {"a": "3", "b": "Because Python."}

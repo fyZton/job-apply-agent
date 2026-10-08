@@ -6,6 +6,7 @@ from pathlib import Path
 
 from jobagent import llm
 from jobagent.core import pause
+from jobagent.facts import check_citations, load_facts, match_skills
 from jobagent.safety import is_sensitive, looks_injected
 
 # Walks the visible fields inside `root`, tags each with a data-ap attribute and returns their description.
@@ -157,6 +158,7 @@ class FormAssistant:
         except (FileNotFoundError, json.JSONDecodeError):
             self.cache = {}
         self.rules = [(re.compile(r["pattern"], re.I), r["value"]) for r in profile.get("fixed_answers", [])]
+        self.facts = load_facts(profile)  # empty for a v1 profile: answers are then not checked against facts
 
     def _save_cache(self):
         self.cache_path.write_text(json.dumps(self.cache, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -172,21 +174,50 @@ class FormAssistant:
         The answer's largest number (so "5+" is 5 and "5-7" is 7) is compared with the years of the skill the
         question names, or with the profile's maximum when no skill matches."""
         text = f'{field.get("context", "")} {field["question"]}'
-        skills = {str(k).lower(): v for k, v in (self.profile.get("years_of_experience") or {}).items()
-                  if isinstance(v, int | float) and not isinstance(v, bool)}
+        if self.facts:
+            skills = {f.text.lower(): float(f.years or 0) for f in self.facts.values() if f.kind == "skill"}
+            named = {f.text.lower(): float(f.years or 0) for f in match_skills(self.facts, text)}
+        else:
+            skills = {str(k).lower(): v for k, v in (self.profile.get("years_of_experience") or {}).items()
+                      if isinstance(v, int | float) and not isinstance(v, bool)}
+            named = None
         if not skills or not YEARS_QUESTION.search(text):
             return False
         numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
         if not numbers:
             self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}")
             return False
-        words = set(re.findall(r"\w+", text.lower()))
-        named = {k: v for k, v in skills.items() if set(k.split("_")) <= words}
+        if named is None:
+            words = set(re.findall(r"\w+", text.lower()))
+            named = {k: v for k, v in skills.items() if set(k.split("_")) <= words}
         limit_name, limit = max(named.items(), key=lambda kv: kv[1]) if named else ("any skill", max(skills.values()))
         if max(numbers) > limit:
             self.log(f"years answer {max(numbers):g} is above the profile's {limit:g} ({limit_name}); not used")
             return True
         return False
+
+    def _grounded(self, field, value, cited):
+        """With facts in the profile, an answer must be backed by them: every cited id exists, number and
+        open-text answers cite at least one (a plain 0 claims nothing), and a years answer is not above the
+        years of the facts it cites. Without facts (v1 profile) there is nothing to check."""
+        if not self.facts:
+            return True
+        cited = cited or []
+        unknown = check_citations(cited, self.facts)
+        if unknown:
+            self.log(f"answer for {field['question'][:60]!r} cites unknown facts {unknown}; not used")
+            return False
+        numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
+        claims_nothing = field["type"] == "number" and bool(numbers) and max(numbers) == 0
+        if field["type"] in ("number", "textarea") and not cited and not claims_nothing:
+            self.log(f"answer for {field['question'][:60]!r} cites no fact; not used")
+            return False
+        if cited and numbers and YEARS_QUESTION.search(f'{field.get("context", "")} {field["question"]}'):
+            limit = max(float(self.facts[i].years or 0) for i in cited)
+            if max(numbers) > limit:
+                self.log(f"years answer {max(numbers):g} is above the cited facts {cited} ({limit:g}); not used")
+                return False
+        return True
 
     def _manual_form(self, reason, fields):
         self.log(f"Form sent to manual review: {reason}")
@@ -227,15 +258,19 @@ class FormAssistant:
                 pending.append(f)
         if pending:
             extra = {} if self.forced_reply is None else {"raw": self.forced_reply}
+            if self.facts:
+                extra["facts"] = self.facts
             r = llm.answer_fields(pending, self.profile_text, offer, self.model, **extra)
             if r is None:
                 return answers, missing + [f["question"] for f in pending if f["required"]] or [
                     "(the LLM did not answer)"]
             unknown = set(r.get("unknown") or [])
             llm_answers = r.get("answers") or {}
+            cites = r.get("facts") or {}
             for f in pending:
                 value = llm_answers.get(f["id"])
-                if f["id"] in unknown or not self._valid(f, value) or self._overstates_years(f, value):
+                if (f["id"] in unknown or not self._valid(f, value) or self._overstates_years(f, value)
+                        or not self._grounded(f, value, cites.get(f["id"]))):
                     if f["required"]:
                         missing.append(f["question"])
                     continue

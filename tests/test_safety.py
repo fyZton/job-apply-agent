@@ -153,3 +153,26 @@ def test_stop_requested(tmp_path):
     assert not safety.stop_requested(tmp_path)
     (tmp_path / "STOP").write_text("")
     assert safety.stop_requested(tmp_path)
+
+
+def test_validate_answers_accepts_value_with_facts():
+    raw = {"answers": {"a": {"value": "3", "facts": ["skill.python", 5, "x" * 300]}, "c": True}, "unknown": []}
+    out = safety.validate_answers(raw, FIELDS)
+    assert out["answers"] == {"a": "3", "c": True}
+    assert out["facts"]["a"] == ["skill.python", "x" * 100]
+    assert "c" not in out["facts"]
+
+
+def test_validate_answers_plain_reply_has_no_facts_key():
+    assert "facts" not in safety.validate_answers({"answers": {"a": "x"}, "unknown": []}, FIELDS)
+
+
+@pytest.mark.parametrize("answer", [{"value": {"k": 1}, "facts": []}, {"value": [1]}, {"facts": ["skill.python"]}])
+def test_validate_answers_drops_bad_structured_values(answer):
+    out = safety.validate_answers({"answers": {"a": answer}}, FIELDS)
+    assert out["answers"] == {}
+
+
+def test_validate_answers_non_list_facts_become_empty():
+    out = safety.validate_answers({"answers": {"a": {"value": "x", "facts": "skill.python"}}}, FIELDS)
+    assert out["answers"] == {"a": "x"} and out["facts"] == {"a": []}

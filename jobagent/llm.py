@@ -18,6 +18,7 @@ import tempfile
 
 import yaml
 
+from jobagent.facts import facts_prompt, load_facts, match_skills
 from jobagent.safety import (
     DATA_RULE,
     strip_sensitive,
@@ -279,7 +280,7 @@ Reply ONLY with JSON:
     return validate_score(raw, [c["file"] for c in cvs])
 
 
-def _without_sensitive(profile_text):
+def _without_sensitive(profile_text, drop=()):
     """The profile as YAML minus keys (and fixed-answer rules) about ids, banking, passwords or birth dates."""
     try:
         data = yaml.safe_load(profile_text)
@@ -287,21 +288,37 @@ def _without_sensitive(profile_text):
         data = None
     if not isinstance(data, dict):
         return "(profile unavailable)"
+    data = {k: v for k, v in data.items() if k not in drop}
     return yaml.safe_dump(strip_sensitive(data), allow_unicode=True, sort_keys=False)
 
 
-def answer_fields(fields, profile_text, offer, model, raw=None):
-    """Returns {"answers": {id: value}, "unknown": [ids]} or None.
+def answer_fields(fields, profile_text, offer, model, raw=None, facts=None):
+    """Returns {"answers": {id: value}, "unknown": [ids], "facts": {id: [fact ids]}} or None.
 
-    `raw`, if given, stands in for the model reply (the evals use it to test validation); it still goes
-    through validate_answers."""
+    `facts` ({id: Fact}, from the profile) switches on grounded answers: the model sees the fact ids and must
+    cite them. `raw`, if given, stands in for the model reply (the evals use it to test validation); it still
+    goes through validate_answers."""
+    if facts:
+        years_rule = ('For "years of experience with X" use the years of the fact for X in FACTS; if X is not '
+                      "there and is not clearly equivalent to a fact, answer 0.")
+        profile_block = f"""{_without_sensitive(profile_text, drop=("facts",))}
+FACTS (the only experience you may claim; cite their ids):
+{facts_prompt(facts)}"""
+        cite_rule = ('- Every number and open-text answer must cite the fact ids it relies on, and a years answer '
+                     'cannot be higher than the cited fact. Never cite an id that is not in FACTS.\n')
+        reply = ('{"answers": {"<id>": {"value": <value>, "facts": ["<fact id>"]}}, "unknown": ["<id>"]}')
+    else:
+        years_rule = ('For "years of experience with X" use years_of_experience from the profile; if X is not '
+                      "there and is not clearly equivalent to something there, answer 0.")
+        profile_block, cite_rule = _without_sensitive(profile_text), ""
+        reply = '{"answers": {"<id>": <value>}, "unknown": ["<id>"]}'
     prompt = f"""{DATA_RULE}
 
 You are a candidate's application assistant. Answer the fields of an application form
 with TRUE answers based only on their profile.
 
 CANDIDATE PROFILE (YAML):
-{_without_sensitive(profile_text)}
+{profile_block}
 
 OFFER:
 {wrap_posting(f"{offer.title} at {offer.company} ({offer.site})")}
@@ -310,9 +327,8 @@ FIELDS (JSON):
 {wrap_fields(fields)}
 
 Rules:
-- Never invent or inflate experience. For "years of experience with X" use years_of_experience from the
-  profile; if X is not there and is not clearly equivalent to something there, answer 0.
-- Numeric fields: only the number.
+- Never invent or inflate experience. {years_rule}
+{cite_rule}- Numeric fields: only the number.
 - Salary / expectation / rate / amount (even in a text field): ONLY the number, no currency or words,
   derived from the profile's expected salary (monthly, yearly or hourly as asked).
 - select/radio: answer EXACTLY the text of one of the options.
@@ -324,7 +340,7 @@ Rules:
   (e.g. ID number, references), put its id in "unknown".
 - Leave out optional fields that don't apply.
 
-Reply ONLY with JSON: {{"answers": {{"<id>": <value>}}, "unknown": ["<id>"]}}"""
+Reply ONLY with JSON: {reply}"""
     if raw is None:
         raw = _fake_answers(fields, profile_text) if backend() == "fake" else ask_json(prompt, model)
     return validate_answers(raw, fields)
@@ -346,14 +362,21 @@ def _fake_score(offer, cvs):
 
 def _fake_answers(fields, profile_text):
     profile = yaml.safe_load(profile_text) or {}
+    facts = load_facts(profile)
     years = profile.get("years_of_experience") or {}
     answers, unknown = {}, []
     for f in fields:
         words = set(re.findall(r"\w+", f["question"].lower()))
         if "years" in words or "años" in words:
-            answers[f["id"]] = str(next((v for k, v in years.items() if set(k.split("_")) & words), 0))
+            if facts:
+                matched = match_skills(facts, f["question"])
+                best = max(matched, key=lambda m: m.years or 0, default=None)
+                answers[f["id"]] = ({"value": str(int(best.years or 0)), "facts": [best.id]} if best else "0")
+            else:
+                answers[f["id"]] = str(next((v for k, v in years.items() if set(k.split("_")) & words), 0))
         elif f["type"] == "textarea":
-            answers[f["id"]] = profile.get("summary", "").strip()
+            summary = profile.get("summary", "").strip()
+            answers[f["id"]] = {"value": summary, "facts": list(facts)[:3]} if facts else summary
         elif f["type"] == "checkbox":
             answers[f["id"]] = "true"
         else:

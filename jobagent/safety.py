@@ -120,24 +120,36 @@ def validate_score(raw, cv_names):
 
 
 def validate_answers(raw, fields):
-    """Keeps only answers for known field ids, with scalar values and length caps. None if malformed."""
+    """Keeps only answers for known field ids, with scalar values and length caps. None if malformed.
+
+    An answer is a plain scalar or {"value": scalar, "facts": [ids]}. The result keeps `answers` as plain
+    scalars; cited fact ids, if the model sent any, come back under "facts" ({field id: [ids]})."""
     if not isinstance(raw, dict):
         return None
     answers = raw.get("answers", {})
     if not isinstance(answers, dict):
         return None
     types = {f["id"]: f.get("type") for f in fields}
-    clean = {}
+    clean, cited = {}, {}
     for key, value in answers.items():
+        if isinstance(value, dict) and "value" in value:
+            ids = value.get("facts")
+            cited[key] = [i[:100] for i in ids if isinstance(i, str)][:20] if isinstance(ids, list) else []
+            value = value["value"]
         if key not in types:
             logger.warning("answers: dropped unknown field id %r", str(key)[:40])
+            cited.pop(key, None)
         elif not isinstance(value, str | int | float | bool):
             logger.warning("answers: dropped non-scalar value for field %r", key)
+            cited.pop(key, None)
         else:
             clean[key] = value[:2000 if types[key] == "textarea" else 200] if isinstance(value, str) else value
     unknown = raw.get("unknown")
     unknown = unknown if isinstance(unknown, list) else []
-    return {"answers": clean, "unknown": [u for u in unknown if isinstance(u, str) and u in types]}
+    out = {"answers": clean, "unknown": [u for u in unknown if isinstance(u, str) and u in types]}
+    if cited:
+        out["facts"] = cited
+    return out
 
 
 def stop_requested(data_dir):

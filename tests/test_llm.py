@@ -4,6 +4,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from jobagent import llm
 from jobagent.core import Offer
@@ -390,3 +391,30 @@ def test_answer_fields_wraps_fields_and_filters(monkeypatch):
 def test_fake_scorer_senior_rule(text, fit):
     offer = Offer("demo", "demo:1", "https://example.com/1", title="Dev", company="Acme", text=text)
     assert llm._fake_score(offer, CVS)["fit"] == fit
+
+
+FACT_PROFILE = ("version: 2\nfirst_name: Alex\nsummary: Backend dev\nfacts:\n"
+                "  - {id: skill.python, kind: skill, name: Python, years: 3}\n")
+
+
+def test_form_prompt_lists_facts_and_asks_for_citations(monkeypatch):
+    from jobagent.facts import load_facts
+
+    prompts = capture_prompt(monkeypatch, '{"answers": {}, "unknown": []}')
+    facts = load_facts(yaml.safe_load(FACT_PROFILE))
+    llm.answer_fields([{"id": "a", "type": "number", "question": "Years of Python?"}], FACT_PROFILE, OFFER,
+                      "sonnet", facts=facts)
+    assert "[skill.python] Python, 3 years" in prompts[0]
+    assert '"facts"' in prompts[0] and "cite" in prompts[0].lower()
+    assert prompts[0].count("skill.python") == 1  # only in the facts block, not repeated in the YAML
+
+
+def test_fake_backend_cites_facts(monkeypatch):
+    monkeypatch.setenv("JOBAGENT_LLM", "fake")
+    fields = [{"id": "a", "type": "number", "question": "Years of experience with Python?"},
+              {"id": "b", "type": "number", "question": "Years of experience with Rust?"},
+              {"id": "c", "type": "textarea", "question": "Why this job?"}]
+    out = llm.answer_fields(fields, FACT_PROFILE, OFFER, "sonnet")
+    assert out["answers"] == {"a": "3", "b": "0", "c": "Backend dev"}
+    assert out["facts"]["a"] == ["skill.python"] and out["facts"]["c"] == ["skill.python"]
+    assert "b" not in out["facts"] or out["facts"]["b"] == []
