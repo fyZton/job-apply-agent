@@ -311,10 +311,23 @@ def demo(headless=False, dry_run=False):
 
 def setup_mode(root=ROOT, from_cv=None, use_llm=True, yes=False):
     """--setup: interview that writes profile.yaml. The starting draft is the CV given with --from-cv or, if
-    there is none, the existing profile (v1 or v2)."""
+    there is none, the existing profile (v1 or v2). Ctrl+C or end of input cancels without writing."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")  # a Windows console can't print every character of a CV
+    try:
+        return _setup(root, from_cv, use_llm, yes)
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled. Nothing written.")
+        sys.exit(130)
+
+
+def _setup(root, from_cv, use_llm, yes):
     path = root / "profile.yaml"
     if not from_cv:
-        return setup.setup(path, setup.load_draft(path), input, print)
+        draft = setup.load_draft(path, input, print)
+        if draft is None:
+            sys.exit("Nothing written.")
+        return setup.setup(path, draft, input, print)
     try:
         text = cvparse.extract_text(from_cv)
     except (RuntimeError, ValueError, OSError) as e:  # ValueError includes CVParseError
