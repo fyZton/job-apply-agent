@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+api = ["anthropic>=1.0"]
 
 [project.scripts]
 jobagent = "jobagent.cli:main"

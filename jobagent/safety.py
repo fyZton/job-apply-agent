@@ -75,7 +75,8 @@ def validate_answers(raw, fields):
     for key, value in answers.items():
         if key in types and isinstance(value, str | int | float | bool):
             clean[key] = value[:2000 if types[key] == "textarea" else 200] if isinstance(value, str) else value
-    unknown = raw.get("unknown") or []
+    unknown = raw.get("unknown")
+    unknown = unknown if isinstance(unknown, list) else []
     return {"answers": clean, "unknown": [u for u in unknown if isinstance(u, str) and u in types]}
 
 

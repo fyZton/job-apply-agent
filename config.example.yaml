@@ -17,8 +17,16 @@ pause_between_applications: [90, 240]  # random seconds between applications (hu
 dry_run: false              # true = fill everything but never submit
 
 llm:
+  backend: claude           # claude = Claude Code CLI, no API key | api = Anthropic API (pip install -e ".[api]")
   score_model: haiku        # fast, to score offers
   form_model: sonnet        # more careful, to answer form questions
+  api_models:               # alias -> model ID, used by the api backend only
+    haiku: claude-haiku-5-5
+    sonnet: claude-sonnet-5-5
+  prices_usd_per_mtok:      # [input, output] per million tokens, used to estimate the cost
+    claude-haiku-5-5: [0.10, 0.50]
+    claude-sonnet-5-5: [2.0, 10.0]
+  max_cost_usd_per_run: 1.0 # the run stops when the estimated cost goes above this
 
 excel: data/applications.xlsx
 cv_dir: cv
