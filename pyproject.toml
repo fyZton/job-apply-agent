@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
 api = ["anthropic>=1.0"]
+cv = ["pypdf>=4", "python-docx>=1.1"]
 
 [project.scripts]
 jobagent = "jobagent.cli:main"

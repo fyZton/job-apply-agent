@@ -4,6 +4,7 @@
   python -m jobagent --dry-run    do everything except submitting
   python -m jobagent --login      open every board to log in (first time only)
   python -m jobagent --setup      create or upgrade profile.yaml by answering questions
+  python -m jobagent --from-cv cv.pdf   same, starting from the facts found in your CV
   python -m jobagent --only linkedin
   python -m jobagent --demo       run the whole flow on a local fake board, no accounts needed
   python -m jobagent --eval       run the offline evals (add --live to score the configured model)
@@ -23,7 +24,7 @@ from pathlib import Path
 import yaml
 from playwright.sync_api import sync_playwright
 
-from jobagent import evals, llm, setup
+from jobagent import cvparse, evals, llm, setup
 from jobagent.core import DATA_DIR, SessionExpired, StopRequested, pause, set_stop_check
 from jobagent.forms import FormAssistant
 from jobagent.profile import ProfileError, dump, load_profile
@@ -308,9 +309,22 @@ def demo(headless=False, dry_run=False):
     return run
 
 
-def setup_mode(root=ROOT):
-    """--setup: interview that writes profile.yaml. An existing profile (v1 or v2) is the starting draft."""
-    return setup.setup(root / "profile.yaml", setup.load_draft(root / "profile.yaml"), input, print)
+def setup_mode(root=ROOT, from_cv=None, use_llm=True):
+    """--setup: interview that writes profile.yaml. The starting draft is the CV given with --from-cv or, if
+    there is none, the existing profile (v1 or v2)."""
+    path = root / "profile.yaml"
+    if not from_cv:
+        return setup.setup(path, setup.load_draft(path), input, print)
+    try:
+        text = cvparse.extract_text(from_cv)
+    except (RuntimeError, ValueError, OSError) as e:
+        sys.exit(str(e))
+    config = root / "config.yaml"
+    cfg = yaml.safe_load(config.read_text(encoding="utf-8")) or {} if config.exists() else {}
+    llm.configure(cfg.get("llm", {}))
+    if use_llm:
+        log("The text of the CV goes to the configured LLM backend to propose facts (--no-llm skips this).")
+    return setup.setup(path, cvparse.draft_from_text(text, use_llm, log), input, print)
 
 
 LIVE_MIN_PASS_RATE = 0.9
@@ -359,6 +373,8 @@ def main():
     ap.add_argument("--eval", action="store_true", help="run the eval suites (offline, fake backend)")
     ap.add_argument("--live", action="store_true", help="with --eval: score the configured backend instead")
     ap.add_argument("--setup", action="store_true", help="create or upgrade profile.yaml by answering questions")
+    ap.add_argument("--from-cv", metavar="PATH", help="with --setup: start from a .pdf, .docx or .txt CV")
+    ap.add_argument("--no-llm", action="store_true", help="with --from-cv: read contact details only, no LLM call")
     ap.add_argument("--headless", action="store_true", help="with --demo: don't show the browser")
     args = ap.parse_args()
     if args.demo:
@@ -366,8 +382,8 @@ def main():
         return
     if args.eval:
         sys.exit(eval_mode(args.live))
-    if args.setup:
-        setup_mode()
+    if args.setup or args.from_cv:
+        setup_mode(from_cv=args.from_cv, use_llm=not args.no_llm)
         return
     if os.environ.get("JOBAGENT_LLM") == "fake":
         sys.exit("JOBAGENT_LLM=fake is only allowed with --demo or --eval: "

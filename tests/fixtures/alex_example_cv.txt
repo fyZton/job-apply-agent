@@ -1,0 +1,20 @@
+Alex Example
+alex@example.com | +58 400 000 0000
+https://www.linkedin.com/in/alex-example | github.com/alex-example/some-repo
+Caracas, Venezuela
+
+Skills
+Python (3 years), SQL (2 years), Docker (1 year)
+
+Certifications
+AWS Cloud Practitioner, 2024
+
+Experience
+Backend Developer, Acme, 2023-01 to present
+- Built REST integrations between internal services and partner APIs
+
+Education
+B.Sc. Computer Science, 2023
+
+Languages
+English B2, Spanish native

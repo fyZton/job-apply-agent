@@ -346,6 +346,29 @@ Reply ONLY with JSON: {reply}"""
     return validate_answers(raw, fields)
 
 
+def extract_cv_facts(text, model="sonnet"):
+    """Facts found in CV text, each with a `source` quote copied from it, or None. The caller must check
+    that every quote really is in the text. Under the fake backend nothing is extracted."""
+    if backend() == "fake":
+        return []
+    prompt = f"""{DATA_RULE}
+
+Extract the facts a job application can rely on from this CV. Copy, never infer: only what the text says.
+
+CV:
+{wrap_posting(text)}
+
+Reply ONLY with JSON: {{"facts": [ITEM, ...]}} where each ITEM has "kind" and a "source": a short quote copied
+exactly from the CV that supports it. Kinds and their fields:
+- skill: name, years (only if the CV states them; otherwise leave the item out)
+- cert: name, year
+- experience: title, org, start (YYYY-MM), end (YYYY-MM or "present"), bullets: [{{"text", "source"}}]
+- education: name, org, year
+- language: name, level"""
+    raw = ask_json(prompt, model)
+    return raw.get("facts") if isinstance(raw, dict) else None
+
+
 # Fake backend (JOBAGENT_LLM=fake): deterministic rules that behave like an honest model and ignore any
 # instruction inside the posting. Used by the demo, CI and the offline evals, so those test the pipeline
 # around the model (detector, validation, caps), not the model itself.
