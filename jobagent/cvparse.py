@@ -227,7 +227,9 @@ def _span(source, text):
     return m.group() if m else None
 
 
-NEGATION = r"(?:no|not|never|without|sin|nunca|ninguna?|ningun|lack\w*)"
+NEGATION = (r"(?:no|not|never|without|sin|nunca|ninguna?|ningun|lack\w*|learning|studying|interested in|"
+            r"want to learn|wants to learn|hoping to learn|aprendiendo|estudiando|interesad[oa] en|quiero aprender|"
+            r"me gustaria aprender)")
 
 
 def _negated(name, source):

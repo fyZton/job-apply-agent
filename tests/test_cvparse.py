@@ -643,3 +643,9 @@ def test_title_must_sit_next_to_its_org(monkeypatch):
     text = "Data Analyst at Beta 2019-2020; Backend Developer at Acme 2023 to present\n"
     items = [{"kind": "experience", "title": "Data Analyst", "org": "Acme", "start": "2023-01", "source": text.strip()}]
     assert facts_for(monkeypatch, text, items) == []
+
+
+@pytest.mark.parametrize("source", ["Currently learning Kubernetes", "Estudiando Kubernetes",
+                                    "Interested in Kubernetes", "I want to learn Kubernetes"])
+def test_skill_the_cv_only_aspires_to_is_dropped(monkeypatch, source):
+    assert facts_for(monkeypatch, source + "\n", [{"kind": "skill", "name": "Kubernetes", "source": source}]) == []

@@ -835,3 +835,25 @@ def test_expert_question_is_not_cached_when_rejected(tmp_path, monkeypatch):
     q = "Are you an expert in SQL?"
     assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])
     assert a.cache == {}
+
+
+# --- round 16 ---------------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("type_, question, options, value", [
+    ("select", "¿Cuántos años de experiencia tienes con Kubernetes?", ["Sin experiencia", "1-3 años"],
+     "Sin experiencia"),
+    ("radio", "Do you have Kubernetes experience?", ["No, but willing to learn", "Yes"], "No, but willing to learn"),
+    ("radio", "¿Experiencia con Kubernetes?", ["No, pero dispuesto a aprender", "Sí"],
+     "No, pero dispuesto a aprender"),
+])
+def test_honest_negatives_are_answered(tmp_path, monkeypatch, type_, question, options, value):
+    a = claimer(tmp_path, 3)
+    fake_llm(monkeypatch, {"answers": {"a": value}, "unknown": []})
+    assert a.decide([field("a", question, type_, options=options)], OFFER) == ({"a": value}, [])
+
+
+def test_hiring_experience_is_not_answered_yes(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    fake_llm(monkeypatch, {"answers": {"a": "Yes"}, "unknown": []})
+    q = "Do you have hiring experience?"
+    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])

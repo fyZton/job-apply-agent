@@ -146,6 +146,14 @@ ROWS = [
     ("radio", "Do you work well with others?", YN, "Yes"),
     ("radio", "Do you enjoy working in a team?", YN, "Yes"),
     ("radio", "¿Te gusta trabajar en equipo?", SN, "Sí"),
+    # motivation
+    ("textarea", "Why do you want to join our team?", None,
+     "I like building backend services in Python and the role is fully remote."),
+    ("textarea", "What interests you about this role?", None, "I like building backend services in Python."),
+    ("textarea", "¿Por qué quieres trabajar con nosotros?", None,
+     "Me gusta construir servicios backend en Python y el puesto es remoto."),
+    ("textarea", "¿Por qué te interesa este puesto?", None, "Me gusta construir servicios backend en Python."),
+    ("textarea", "¿Qué te motiva de esta oferta?", None, "Me gusta construir servicios backend en Python."),
     # consent, privacy, checks
     ("checkbox", "I agree to the privacy policy", None, True),
     ("checkbox", "I accept the terms and conditions", None, True),
@@ -196,6 +204,18 @@ HONEST_NO = [
     ("text", "Do you have Kubernetes experience?", None, "No tengo experiencia con Kubernetes."),
     ("textarea", "Anything else?", None, "I have never used Kubernetes."),
     ("radio", "Do you require sponsorship?", YN, "No"),
+    ("select", "¿Cuántos años de experiencia tienes con Kubernetes?", ["Sin experiencia", "1-3 años"],
+     "Sin experiencia"),
+    ("radio", "Do you have Kubernetes experience?", ["No, but willing to learn", "Yes"], "No, but willing to learn"),
+    ("select", "Experiencia con Java", ["Sin experiencia", "Avanzada"], "Sin experiencia"),
+    ("radio", "¿Experiencia con Kubernetes?", ["No, pero dispuesto a aprender", "Sí"],
+     "No, pero dispuesto a aprender"),
+    ("text", "Nivel de alemán", None, "No hablo alemán"),
+    ("text", "How many people have you managed?", None, "Not applicable"),
+    ("text", "¿Personas a cargo?", None, "No aplica"),
+    ("select", "Highest level of education", EDU, "High school"),
+    ("textarea", "Describe your Kubernetes experience", None, "I have zero Kubernetes experience."),
+    ("text", "Do you speak German?", None, "I don't speak German"),
 ]
 
 

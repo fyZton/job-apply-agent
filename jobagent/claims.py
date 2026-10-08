@@ -57,6 +57,7 @@ highest education educacion university universidad universitario universitaria c
 academico estudios titulo level
 minimum maximum least trabajando trabajas
 need needs home conditions condition speaker speakers actual take takes took
+high school secondary primary secundaria primaria bachillerato este esto estos
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently legally receive calls call require requires now future
 first last middle given family maiden
@@ -104,6 +105,8 @@ SKILL_Q = re.compile(r"\b(?:experienc\w*|proficien\w*|know|knowledge|conoc\w*|fa
 WORKING = re.compile(r"\b(?:work\w*|trabaj\w*|employ\w*|empleado)\b|experienc")
 YEARS_EXEMPT = re.compile(r"\b(?:old|age|edad|notice|preaviso|live\w*|reside\w*|residen\w*|located|based|ubicad\w*|"
                           r"viv\w+|duration|length)\b")
+HAVE_USED = re.compile(r"\b(?:have|has) you (?:ever )?(?:worked|used|built|developed|managed|done|handled|led|written|"
+                       r"programmed|deployed|run)\b|\bexperience (?:with|in|using|as)\b|\bhas (?:usado|trabajado)\b")
 EXP_WORDS = re.compile(r"experienc|proficien|skill|knowledge|conoc|familiar")
 # Questions about pay, availability, legal status, location, contact details or consent: a number or a name there
 # is not a claim of experience. EN + ES, folded.
@@ -127,6 +130,7 @@ employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
 old older adult adults mayor mayores edad accept accepts
+porque motiva motivate motivates interest interests interesa join unirte quieres deseas gustaria
 employment status situacion laboral mode basis periodo vacante vacancy opening opportunity oportunidad oferta
 posicion position puesto nosotros estado
 salarial salariales aspiracion aspiraciones deseado deseada pretendido pretendida renta empezar comenzar preferida
@@ -150,6 +154,14 @@ NON_CLAIM_PHRASES = ("per hour", "por hora", "day rate", "start date", "fecha de
 NON_CLAIM = re.compile(r"(?<![\w.-])(?:" + "|".join(sorted(NON_CLAIM_WORDS | set(NON_CLAIM_PHRASES), key=len,
                                                         reverse=True)) + r")(?![\w-]|\.\w)")
 # Role and domain words: not generic, so a question or answer that names one needs profile text behind it.
+# Topic words that, in a question about experience, name something you would have to have done.
+TOPIC_KEEP_YEARS = frozenset("""
+hire hiring hired recruit recruiting recruitment reclutamiento gdpr privacy privacidad travel viajar drug drugs
+newsletter consent consento policy policies politica terms terminos veteran veterans disability disabilities
+discapacidad gender genero race ethnic ethnicity visa visas sponsor sponsorship pay payroll salary salaries wage wages
+compensation
+""".split())
+TOPIC_KEEP = TOPIC_KEEP_YEARS | {"freelance", "contractor", "contractors", "contract", "employee", "employees"}
 ROLE_TERMS = set("""
 developer developers dev programmer engineer engineers analyst specialist consultant backend frontend fullstack web
 senior lead teamlead mobile devops qa architect manager scrummaster dataengineer dataanalyst datascientist
@@ -209,7 +221,7 @@ NO = {"no", "none", "ninguno", "ninguna", "false", "not", "never", "nunca", "0"}
 
 ROLE_PHRASES = tuple((re.compile(rx), w) for rx, w in (
     (r"\bfront[- ]?end\b", "frontend"), (r"\bback[- ]?end\b", "backend"), (r"\bfull[- ]?stack\b", "fullstack"),
-    (r"\b(?:team|tech|technical) lead(?:er)?\b", "teamlead"), (r"\bdata engineer\w*", "dataengineer"),
+    (r"\b(?:team|tech|technical)[- ]lead(?:er)?\b", "teamlead"), (r"\bdata engineer\w*", "dataengineer"),
     (r"\bdata analy\w+", "dataanalyst"), (r"\bdata scien\w+", "datascientist"),
     (r"\bscrum master\b", "scrummaster"), (r"\bproduct manager\b", "productmanager"),
     (r"\bdrug tests?\b", "drug"), (r"\bvice[- ]president\b", "vp"), (r"\bco[- ]?founder\b", "cofounder"),
@@ -232,8 +244,8 @@ def fold(text):
 KNOWN_TOK = {t for t in KNOWN_TECH if t not in AMBIGUOUS and TOKEN.fullmatch(t)}
 
 
-def is_stop(tok):
-    if tok in KNOWN_TOK:  # a technology name is always a claim term, whatever the stop rules say
+def is_stop(tok, keep=()):
+    if tok in KNOWN_TOK or tok in keep:  # a technology name is always a claim term, whatever the stop rules say
         return False
     return (tok in STOP or tok in RANK or tok in PLACES or tok in NON_CLAIM_WORDS or tok in ADVERBS
             or CEFR.fullmatch(tok) is not None or not any(c.isalnum() for c in tok)
@@ -243,8 +255,11 @@ def is_stop(tok):
 def groups(text):
     """The runs of adjacent content tokens of `text` (folded): what is left after the stop words."""
     out, cur = [], []
+    keep = ()
+    if EXP_WORDS.search(text) or HAVE_USED.search(text):  # "hiring experience" is a claim, "hiring policy" is not
+        keep = TOPIC_KEEP_YEARS if YEARS_Q.search(text) else TOPIC_KEEP
     for tok in TOKEN.findall(text):
-        if is_stop(tok):
+        if is_stop(tok, keep):
             if cur:
                 out.append(cur)
             cur = []
@@ -464,24 +479,30 @@ BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speak
 # "no one" and "no other" do not negate. Clauses end at . ; ! ? : , " - " and "but".
 # A clause is skipped only when the negation governs the claim: "no", "not yet", "I have never used X", "no tengo
 # experiencia con X". "No doubt I am a X expert", "I never stopped using X" or "not just X" are claims.
-BARE_NO = re.compile(r"(?:no|nope|none|ninguno|ninguna|nada|false|0|n/a|not yet|not really|never|nunca|not|"
+BARE_NO = re.compile(r"(?:no|nope|none|ninguno|ninguna|nada|false|0|n/a|not yet|not really|never|nunca|not|zero|"
+                     r"sin experiencia|sin conocimientos?|no aplica|not applicable|no experience|"
+                     r"ninguna experiencia|zero experience|"
                      r"no thanks|no gracias|no tengo|no he|(?:i |yo )?(?:do not|dont|did not|didnt|have not|havent|"
                      r"am not|have none)(?: (?:have|any|yet))*)\W*")
 NEG_GOV = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos|ha)\s+)?"
-                     r"(?:not|never|nunca|no|havent|dont|didnt)\s+(?:(?:yet|todavia|aun|ever|really|actually|any|have|ha|he)\s+)*"
+                     r"(?:not|never|nunca|no|havent|dont|didnt|zero|sin)\s+"
+                     r"(?:(?:yet|todavia|aun|ever|really|actually|any|have|ha|he)\s+)*(?:\w+\s+){0,2}?"
                      r"(?:used|use|worked|work|working|experience|knowledge|tengo|usado|trabajado|touched|done|programmed|"
-                     r"coded|written|had|conocimientos?|experiencia|usar|trabaje)\b")
+                     r"coded|written|had|conocimientos?|experiencia|usar|trabaje|speak|speaking|hablo|hablar|habla)\b")
 NEG_BLOCK = re.compile(r"\b(?:doubt|problem|stopped|stop|without|sin|only|just|solo|solamente|except|excepto|even|also|"
-                       r"tambien|more than|day)\b")
+                       r"tambien|more than|day|other than|besides|apart from|aparte de|salvo)\b")
 CLAUSES = re.compile(r"[.;!?:\n]+|,\s|\s[-\u2013\u2014]\s|"
                      r"\b(?:but|pero|however|although|aunque|while|whereas|though)\b|"
                      r"\b(?:and|y)\s+(?=(?:i|yo|we|my|mi|have|am|soy|tengo)\b)", re.I)
-FILLER = re.compile(r"(?:thanks|thank you|gracias|sorry|please|yet|todavia|aun|really|at all|for now|por ahora)\W*")
+FILLER = re.compile(r"(?:thanks|thank you|gracias|sorry|please|yet|todavia|aun|really|at all|for now|por ahora|"
+                    r"(?:i am |im |estoy )?(?:willing|eager|keen|ready|open) to learn(?: it| more)?|"
+                    r"dispuest[oa] a aprender|con ganas de aprender|quiero aprender|me gustaria aprender)\W*")
 
 
 def negated(clause):
     f = fold(clause).strip()
-    return bool(BARE_NO.fullmatch(f) or FILLER.fullmatch(f) or (NEG_GOV.match(f) and not NEG_BLOCK.search(f)))
+    governed = NEG_GOV.match(f) and not NEG_BLOCK.search(re.sub(r"^\W*sin\b", "", f))
+    return bool(BARE_NO.fullmatch(f) or FILLER.fullmatch(f) or governed)
 
 
 def positive(raw):
@@ -497,8 +518,10 @@ TEAM = re.compile(r"\b(managed|managing|manage|handled|handling|led|leading|lead
                   r"mentoring|coordinat\w*|directed|lider\w*|dirig\w*|gestion\w*)\b[^.;!?]{0,30}?\b(?:\d+|"
                   + "|".join(_NUMW)
                   + r"|teams?|people|others|employees?|members|direct reports|engineers|developers|equipos?|personas|"
-                  r"empleados|colaboradores|staff|interns|juniors|reports)\b")
+                  r"empleados|colaboradores|staff|interns|juniors|reports|departments?|groups?|orgs?|"
+                  r"organi[sz]ations?|departamentos?|areas?)\b")
 HUMANS = (r"(?:teams?|squads?|people|persons|engineers|developers|reports|direct reports|staff|employees|members|"
+          r"departments?|groups?|orgs?|organi[sz]ations?|departamentos?|areas?|"
           r"juniors|interns|equipos?|personas|empleados)")
 COUNT = r"(?:\d+|" + "|".join(_NUMW) + r"|dozen|docena)"
 MGMT_ANS = (
@@ -514,11 +537,14 @@ MANAGING = re.compile(r"manag\w*|led|lead\w*|supervis\w*|mentor\w*|coordin\w*|di
 MGMT_VERB = (r"(?:manag\w*|handl\w*|led|lead(?:ing)?|supervis\w*|mentor\w*|coordinat\w*|direct(?:ed|ing)|lider\w*|"
              r"gestion\w*|dirig\w*)")
 MGMT_OBJ = (r"(?:teams?|people|others|employees?|members|direct reports|engineers|developers|equipos?|personas|"
+            r"departments?|groups?|orgs?|organi[sz]ations?|departamentos?|areas?|"
             r"empleados|colaboradores|staff|reports|juniors|interns)")
 MGMT_Q = re.compile(r"\b" + MGMT_VERB + r"\b[^.?!;]{0,30}?\b" + MGMT_OBJ + r"\b|"
+                    r"\b(?:hir(?:e|ed|ing)|recruit\w*|reclutamiento|reclutar)\b|"
                     r"\bexperience (?:in )?(?:managing|leading|supervising)\b|\bpeople management\b|"
                     r"\bteam management\b")
 PREP_LIST = [[w] for w in ("of", "in", "with", "using", "de", "en", "con", "on", "for")]
+ADVANCED_WORDS = {"extensive", "significant", "considerable", "substantial", "amplia", "solida", "extensa", "vasta"}
 UNIT_FACTOR = {"month": 1 / 12, "months": 1 / 12, "mes": 1 / 12, "meses": 1 / 12, "week": 1 / 52, "weeks": 1 / 52,
                "semana": 1 / 52, "semanas": 1 / 52}
 NONWORK = re.compile(r"\b(?:liv\w+|vivo|vivir|vivimos|resid\w+|based|born|nacido|nac\w+|moved|mude|ubicad\w+)\b")
@@ -740,7 +766,8 @@ class Claims:
         if thr is not None or not (years_q or EXP_WORDS.search(t) or groups(LANG_RX.sub(" ", t))):
             return thr
         rest = OUT_OF.sub(" ", SCALE_RX.sub(" ", AGE.sub(" ", t)))
-        nums = []
+        nums = [float(n.replace(",", ".")) / 12 for n in re.findall(NUM + r"\s*\+?\s*(?:months?|meses)\b", rest)]
+        rest = re.sub(NUM + r"\s*\+?\s*(?:months?|meses)\b", " ", rest)
         for m in re.finditer(r"(?<![\w.])(\d+(?:[.,]\d+)?)\+?(?!\w)", rest):
             n = float(m.group(1).replace(",", "."))
             prev = re.search(r"([a-z0-9+#.]+)\s*$", rest[:m.start()])
@@ -999,6 +1026,10 @@ class Claims:
             for i, tok in enumerate(toks):
                 word = RANK.get(tok) or RANK.get(tok[:-2], 0) if tok.endswith("ly") else RANK.get(tok, 0)
                 word = 6 if tok in ("mastered", "guru", "senior-level") else word
+                if tok in ADVANCED_WORDS:  # "extensive experience": the years of an advanced level
+                    if self.best < WORD_YEARS[5] and not any(self._skill([x]) for x in toks):
+                        return "the answer claims extensive experience, above the profile's best skill"
+                    word = 5
                 if word < 3 or tok in LANGS:
                     continue
                 for j in [*range(i - 1, max(i - 5, -1), -1), *range(i + 1, min(i + 5, len(toks)))]:
@@ -1033,8 +1064,9 @@ class Claims:
                 i += 1
             quants = []
             for i, tok in enumerate(toks):
-                if m := re.fullmatch(r"(\d+(?:\.\d+)?)-(years?|months?|weeks?)", tok):
-                    quants.append((i, float(m.group(1)) * UNIT_FACTOR.get(m.group(2), 1), i))
+                m = re.fullmatch(r"([a-z0-9.]+)-(years?|months?|weeks?)", tok)
+                if m and self._qty(m.group(1)) is not None:
+                    quants.append((i, self._qty(m.group(1)) * UNIT_FACTOR.get(m.group(2), 1), i))
                 elif tok in TIMEW:
                     k, val = i - 1, None
                     near = 1 if tok in UNIT_FACTOR else 4  # "1800 USD per month" is pay, not a duration

@@ -778,3 +778,62 @@ R15_ACCEPT = [
 @pytest.mark.parametrize("type_, question, value, options", R15_ACCEPT)
 def test_round15_accepts(type_, question, value, options):
     assert verdict_q(question, value, type_, options, profile=CS)
+
+
+# --- round 16 --------------------------------------------------------------------------------------------------------
+
+R16_ACCEPT = [
+    ("select", "¿Cuántos años de experiencia tienes con Kubernetes?", "Sin experiencia",
+     ["Sin experiencia", "1-3 años", "Más de 3 años"]),
+    ("radio", "Do you have Kubernetes experience?", "No, but willing to learn", ["No, but willing to learn", "Yes"]),
+    ("select", "Experiencia con Java", "Sin experiencia", ["Sin experiencia", "Basica", "Avanzada"]),
+    ("radio", "¿Experiencia con Kubernetes?", "No, pero dispuesto a aprender",
+     ["No, pero dispuesto a aprender", "Sí"]),
+    ("text", "Nivel de alemán", "No hablo alemán", None),
+    ("text", "How many people have you managed?", "Not applicable", None),
+    ("text", "¿Personas a cargo?", "No aplica", None),
+    ("select", "Highest level of education", "High school", EDU_OPTS),
+    ("textarea", "Describe your Kubernetes experience", "I have zero Kubernetes experience.", None),
+    ("text", "Do you speak German?", "I don't speak German", None),
+    ("text", "Kubernetes experience", "No experience", None),
+    ("radio", "Do you have 24 months of Python experience?", "Yes", None),
+    ("textarea", "Why do you want to join our team?",
+     "I like building backend services in Python and the role is fully remote.", None),
+    ("textarea", "What interests you about this role?", "I like building backend services in Python.", None),
+    ("textarea", "¿Por qué quieres trabajar con nosotros?",
+     "Me gusta construir servicios backend en Python y el puesto es remoto.", None),
+    ("textarea", "¿Por qué te interesa este puesto?", "Me gusta construir servicios backend en Python.", None),
+    ("textarea", "¿Qué te motiva de esta oferta?", "Me gusta construir servicios backend en Python.", None),
+    ("number", "How many years have you worked as a contractor?", "3", None),
+    ("radio", "Are you comfortable working remotely?", "Yes", None),
+    ("textarea", "Anything else?", "I have extensive experience.", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R16_ACCEPT)
+def test_round16_accepts(type_, question, value, options):
+    assert verdict_q(question, value, type_, options, profile=CS)
+
+
+R16_REJECT = [
+    ("radio", "Do you have hiring experience?", "Yes", None),
+    ("radio", "Have you worked with GDPR?", "Yes", None),
+    ("radio", "Do you have travel industry experience?", "Yes", None),
+    ("number", "How many years of hiring experience do you have?", "3", None),
+    ("radio", "Do you have experience with privacy engineering?", "Yes", None),
+    ("radio", "Do you have experience in the drug industry?", "Yes", None),
+    ("radio", "Have you worked as a freelance contractor?", "Yes", None),
+    ("textarea", "Anything else?", "I have not worked with anything other than Kubernetes and Terraform.", None),
+    ("textarea", "Anything else?", "I have not used it, apart from Kubernetes.", None),
+    ("radio", "Do you have 48 months of Python experience?", "Yes", None),
+    ("textarea", "Anything else?", "A Fifteen-year career in Python.", None),
+    ("textarea", "Anything else?", "I was a tech-lead.", None),
+    ("textarea", "Anything else?", "I managed a department.", None),
+    ("textarea", "Anything else?", "I was in charge of the organization.", None),
+    ("textarea", "Anything else?", "Tengo amplia experiencia en Docker.", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R16_REJECT)
+def test_round16_rejects(type_, question, value, options):
+    assert not verdict_q(question, value, type_, options, profile=CS)
