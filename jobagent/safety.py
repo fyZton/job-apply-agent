@@ -130,4 +130,10 @@ def validate_answers(raw, fields):
 
 
 def stop_requested(data_dir):
-    return (Path(data_dir) / "STOP").exists()
+    """True if `data_dir/STOP` exists. If that can't be checked (permissions, I/O error) it also returns True:
+    a kill switch that can't be read must stop the run, not let it continue."""
+    try:
+        return (Path(data_dir) / "STOP").exists()
+    except OSError as e:
+        logger.error("cannot check the STOP file in %s (%s); treating it as STOP", data_dir, type(e).__name__)
+        return True

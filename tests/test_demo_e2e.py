@@ -70,14 +70,34 @@ def test_real_run_refuses_fake_llm(monkeypatch):
         main()
 
 
-def test_stop_file_stops_the_run_before_any_offer(monkeypatch, tmp_path):
+@pytest.fixture
+def run_dir(monkeypatch, tmp_path):
+    """Makes demo() use tmp_path as its data folder, so STOP files go in the run's own folder."""
     monkeypatch.setenv("JOBAGENT_LLM", "fake")
-    monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
-    (tmp_path / "STOP").write_text("")
+    monkeypatch.setattr(cli.tempfile, "mkdtemp", lambda **kw: str(tmp_path))
+    return tmp_path
+
+
+def test_stop_file_in_the_run_folder_stops_the_run_before_any_offer(run_dir, capsys):
+    (run_dir / "STOP").write_text("")
     run = demo(headless=True)
     assert run.tracker.history["seen"] == {}
-    assert "STOP file found" in (tmp_path / "logs").glob("*.log").__next__().read_text(encoding="utf-8")
-    assert (tmp_path / "STOP").exists()  # never deleted automatically
+    assert "STOP file found" in capsys.readouterr().out
+    assert (run_dir / "STOP").exists()  # never deleted automatically
+
+
+def test_stop_file_during_the_form_blocks_the_final_submit(run_dir, monkeypatch, capsys):
+    real_fill = cli.FormAssistant.fill
+
+    def fill_then_stop(self, *a, **kw):
+        missing = real_fill(self, *a, **kw)
+        (run_dir / "STOP").write_text("")
+        return missing
+
+    monkeypatch.setattr(cli.FormAssistant, "fill", fill_then_stop)
+    run = demo(headless=True)
+    assert "sent" not in [v["result"] for v in run.tracker.history["seen"].values()]
+    assert "STOP file found" in capsys.readouterr().out
 
 
 def test_run_all_stops_when_budget_is_exceeded(monkeypatch, tmp_path):
@@ -86,6 +106,7 @@ def test_run_all_stops_when_budget_is_exceeded(monkeypatch, tmp_path):
 
     class FakeRun:
         dry_run = True
+        data = tmp_path
 
         def process(self, page, site):
             seen.append(site)

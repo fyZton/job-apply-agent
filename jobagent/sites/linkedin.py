@@ -3,7 +3,7 @@ import json
 import re
 from urllib.parse import urlencode
 
-from jobagent.core import DATA_DIR, Offer, SessionExpired, click_text, pause, visible_text
+from jobagent.core import DATA_DIR, Offer, SessionExpired, check_stop, click_text, pause, visible_text
 
 NAME = "linkedin"
 LABEL = "LinkedIn"
@@ -253,6 +253,7 @@ def apply(page, offer, cv_path, assistant, dry_run):
             if dry_run:
                 _discard(page)
                 return "dry_run", "Reached 'Submit application' (not sent)"
+            check_stop()
             submit.click(timeout=10000)
             pause(3, 5)
             modal = _modal(page)

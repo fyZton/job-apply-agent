@@ -4,7 +4,7 @@ It is also the smallest complete plugin, so it doubles as the template for addin
 """
 import re
 
-from jobagent.core import Offer, visible_text
+from jobagent.core import Offer, check_stop, visible_text
 
 NAME = "demo"
 LABEL = "Demo board"
@@ -45,6 +45,7 @@ def apply(page, offer, cv_path, assistant, dry_run):
         if submit.count():
             if dry_run:
                 return "dry_run", "Reached 'Submit application' (not sent)"
+            check_stop()
             submit.click()
             page.wait_for_load_state()
             if "Application sent" in visible_text(page.locator("main")):

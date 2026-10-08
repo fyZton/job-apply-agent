@@ -23,7 +23,7 @@ import yaml
 from playwright.sync_api import sync_playwright
 
 from jobagent import evals, llm
-from jobagent.core import DATA_DIR, SessionExpired, pause
+from jobagent.core import DATA_DIR, SessionExpired, StopRequested, pause, set_stop_check
 from jobagent.forms import FormAssistant
 from jobagent.safety import looks_injected, stop_requested
 from jobagent.sites import SITES
@@ -36,10 +36,6 @@ BROWSER_PROFILE = Path(os.environ.get("JOBAGENT_BROWSER", Path.home() / ".jobage
 
 class LLMUnavailable(Exception):
     """Claude is not answering (e.g. the plan's usage limit was reached)."""
-
-
-class StopRequested(Exception):
-    """The file data/STOP exists."""
 
 
 def log(msg):
@@ -104,6 +100,8 @@ class Run:
     def __init__(self, cfg, dry_run, root=ROOT, data=DATA_DIR):
         self.cfg = cfg
         self.dry_run = dry_run
+        self.data = Path(data)
+        set_stop_check(lambda: stop_requested(self.data))
         llm.configure(cfg.get("llm", {}))
         self.profile_text = load_yaml("profile.yaml", root)
         profile = yaml.safe_load(self.profile_text)
@@ -124,7 +122,7 @@ class Run:
         mod = SITES[site]
         limit = self.cfg["daily_limit"][site]
         for offer in mod.search(page, self.cfg, self.tracker.seen):
-            if stop_requested(DATA_DIR):
+            if stop_requested(self.data):
                 raise StopRequested()
             sent = self.summary[site, "dry_run"] if self.dry_run else self.tracker.sent_today(site)
             if sent >= limit:
@@ -229,6 +227,9 @@ class Run:
 
 def run_all(run, sites, ctx):
     log(f"=== Start {'(DRY RUN: nothing is sent)' if run.dry_run else ''} | boards: {', '.join(sites)} ===")
+    if stop_requested(run.data):
+        log("STOP file found; delete it to run again.")
+        return
     page = ctx.pages[0] if ctx.pages else ctx.new_page()
     for site in sites:
         label = SITES[site].LABEL

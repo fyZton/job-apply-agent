@@ -20,6 +20,26 @@ class Offer:
     extra: dict = field(default_factory=dict)
 
 
+class StopRequested(BaseException):
+    """The STOP file exists. A BaseException on purpose: the `except Exception` blocks that make browser steps
+    best-effort must not swallow the kill switch."""
+
+
+_stop_check = None
+
+
+def set_stop_check(func):
+    """Registers a callable returning True when the run must stop (None removes it)."""
+    global _stop_check
+    _stop_check = func
+
+
+def check_stop():
+    """Raises StopRequested if the registered check says so. Call it before irreversible steps."""
+    if _stop_check is not None and _stop_check():
+        raise StopRequested()
+
+
 class SessionExpired(Exception):
     """The platform asks to log in: run `python -m jobagent --login`."""
 
@@ -51,7 +71,14 @@ def best_form(page):
 
 
 def pause(low=1.0, high=2.5):
-    time.sleep(random.uniform(low, high))
+    """Sleeps a random time, checking the STOP file about once a second."""
+    end = time.monotonic() + random.uniform(low, high)
+    while True:
+        check_stop()
+        left = end - time.monotonic()
+        if left <= 0:
+            return
+        time.sleep(min(1.0, left))
 
 
 def click_text(root, pattern, roles=("button", "link")):

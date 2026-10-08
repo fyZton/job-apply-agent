@@ -2,7 +2,7 @@
 import re
 import unicodedata
 
-from jobagent.core import Offer, SessionExpired, best_form, click_text, pause, visible_text
+from jobagent.core import Offer, SessionExpired, best_form, check_stop, click_text, pause, visible_text
 
 NAME = "computrabajo"
 LABEL = "Computrabajo"
@@ -78,6 +78,7 @@ def apply(page, offer, cv_path, assistant, dry_run):
     button = _button(page)
     if not button:
         return "manual", "Apply button not found"
+    check_stop()
     button.scroll_into_view_if_needed(timeout=5000)
     button.click(timeout=10000)
     pause(3, 5)
@@ -92,6 +93,7 @@ def apply(page, offer, cv_path, assistant, dry_run):
         missing = assistant.fill(form, offer, cv_path)
         if missing:
             return "manual", "Unanswered question: " + " | ".join(missing)[:250]
+        check_stop()
         if not click_text(form, r"enviar|postular|continuar|finalizar", roles=("button",)):
             break
         pause(3, 5)
