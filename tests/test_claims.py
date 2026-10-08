@@ -142,3 +142,80 @@ def test_lowercase_city_answer_and_topic_questions():
     assert not verdict("Current city", "kubernetes", "text")
     assert verdict("Do you have a Kubernetes background?", "kubernetes", "text") is False
     assert verdict("Do you use terraform at work?", "we use terraform every day at the office", "text")
+
+
+# --- round 6: a topic word in the question never switches the checks off ---------------------------------------
+
+def verdict_q(question, value, type_="radio", options=None, context="", profile=PROFILE):
+    claims = Claims(load_facts(profile), None, profile)
+    field = {"type": type_, "question": question, "options": YN if options is None and type_ == "radio" else options}
+    return claims.check(field, f"{context} {question}".strip(), value)[0]
+
+
+TOPIC_REJECT = [
+    ("number", "How many years have you worked with Kubernetes remotely?", "10"),
+    ("number", "How many years have you run highly available Kubernetes clusters?", "7"),
+    ("number", "How many years have you used Java at an employer?", "8"),
+    ("text", "Years using Java with your current employer", "8 years"),
+    ("number", "¿Cuántos años has trabajado con Kubernetes en remoto?", "9"),
+    ("number", "Years with Kubernetes in your country", "8"),
+    ("radio", "Do you have 5+ years working remotely with Kubernetes?", "Yes"),
+    ("radio", "Have you used Kubernetes at your current employer?", "Yes"),
+    ("radio", "Have you written Kubernetes network policy manifests?", "Yes"),
+    ("radio", "Have you worked remotely with Kubernetes?", "Yes"),
+    ("radio", "Can you write Go in our time zone?", "Yes"),
+    ("radio", "Do you speak German fluently with remote clients?", "Yes"),
+    ("radio", "Do you hold a Master's degree from a university in your country?", "Yes"),
+    ("radio", "Are you PMP certified, as required by our hiring policy?", "Yes"),
+    ("radio", "This is a remote role. Are you a native English speaker?", "Yes"),
+    ("radio", "Do you speak German? (remote position)", "Yes"),
+    ("radio", "Do you hold a Master's degree? Location: remote", "Yes"),
+    ("select", "What is your German level? (needed for this location)", "Native"),
+    ("textarea", "Why do you want to work here?", "I am a seasoned Deno and Qwik developer."),
+    ("textarea", "Tell us about yourself", "I am a seasoned Deno and Qwik developer."),
+    ("radio", "Do you speak English fluently?", "Yes"),
+    ("textarea", "Anything else?", "I speak English fluently."),
+    ("select", "English level", "Advanced"),
+    ("textarea", "Anything else?", "I am a certified Scrum Master."),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", TOPIC_REJECT)
+def test_topic_words_do_not_switch_the_checks_off(type_, question, value):
+    options = {"select": ["Native", "Basic"] if "German" in question else ["Basic", "Intermediate", "Advanced"]}
+    assert not verdict_q(question, value, type_, options.get(type_))
+
+
+def test_legend_context_does_not_make_a_topic():
+    assert not verdict_q("Years of Kubernetes?", "5", "number", context="Remote work questionnaire")
+
+
+@pytest.mark.parametrize("type_, question, value, options", [
+    ("text", "Current city", "Caracas", None),
+    ("text", "Country of residence", "Venezuela", None),
+    ("number", "Expected monthly salary in USD", "1800", None),
+    ("text", "Notice period", "2 weeks", None),
+    ("radio", "Are you legally authorized to work in the United States?", "Yes", YN),
+    ("textarea", "Why do you want to work here?",
+     "I like your remote-first culture and I have 3 years of Python.", None),
+    ("number", "How many years have you worked with Python remotely?", "3", None),
+    ("select", "English level", "Upper intermediate", ["Basic", "Intermediate", "Upper intermediate", "Advanced"]),
+    ("select", "¿Nivel de inglés?", "Intermedio alto", ["Básico", "Intermedio", "Intermedio alto", "Avanzado"]),
+    ("radio", "Do you speak English fluently?", "No", YN),
+    ("select", "Gender", "Prefer not to say", ["Male", "Female", "Prefer not to say"]),
+    ("radio", "Do you agree to the terms and the privacy policy?", "Yes", YN),
+])
+def test_topic_questions_still_get_their_answers(type_, question, value, options):
+    assert verdict_q(question, value, type_, options)
+
+
+def test_scrum_master_is_a_cert_not_a_degree():
+    claims = Claims(load_facts(PROFILE), None, PROFILE)
+    why = claims.check({"type": "textarea"}, "Anything else?", "I am a certified Scrum Master.")[1]
+    assert why and "degree" not in why
+
+
+@pytest.mark.parametrize("answer", ["I know python, sql, excel and git", "html and css", "nosql"])
+def test_generic_tech_names_are_known(answer):
+    from jobagent.claims import known_tech
+    assert known_tech(answer)

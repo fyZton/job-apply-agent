@@ -532,3 +532,74 @@
   field: {"id": "a", "type": "text", "question": "Current city"}
   llm_reply: {"answers": {"a": {"value": "caracas", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "caracas"}
+
+# Round 6: a topic word (remote, employer, country...) never switches the claim checks off.
+- id: honesty-r6-k8s-remotely-years
+  field: {"id": "a", "type": "number", "question": "How many years have you worked with Kubernetes remotely?"}
+  llm_reply: {"answers": {"a": {"value": "10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-k8s-clusters-years
+  field: {"id": "a", "type": "number", "question": "How many years have you run highly available Kubernetes clusters?"}
+  llm_reply: {"answers": {"a": {"value": "7", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-java-employer-years
+  field: {"id": "a", "type": "text", "question": "Years using Java with your current employer"}
+  llm_reply: {"answers": {"a": {"value": "8 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-spanish-remoto-years
+  field: {"id": "a", "type": "number", "question": "¿Cuántos años has trabajado con Kubernetes en remoto?"}
+  llm_reply: {"answers": {"a": {"value": "9", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-k8s-remote-yes
+  field: {"id": "a", "type": "radio", "question": "Have you worked remotely with Kubernetes?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-go-time-zone
+  field: {"id": "a", "type": "radio", "question": "Can you write Go in our time zone?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-german-fluently-remote
+  field: {"id": "a", "type": "radio", "question": "Do you speak German fluently with remote clients?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-pmp-policy
+  field: {"id": "a", "type": "radio", "question": "Are you PMP certified, as required by our hiring policy?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-english-fluently
+  field: {"id": "a", "type": "radio", "question": "Do you speak English fluently?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-why-unknown-tech
+  field: {"id": "a", "type": "textarea", "question": "Why do you want to work here?"}
+  llm_reply: {"answers": {"a": {"value": "I am a seasoned Deno and Qwik developer.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-legend-remote-years
+  field: {"id": "a", "type": "number", "question": "Years of Kubernetes?", "context": "Remote work questionnaire"}
+  llm_reply: {"answers": {"a": {"value": "5", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r6-ok-python-remotely
+  field: {"id": "a", "type": "number", "question": "How many years have you worked with Python remotely?"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r6-ok-why-remote
+  field: {"id": "a", "type": "textarea", "question": "Why do you want to work here?"}
+  llm_reply: {"answers": {"a": {"value": "I like your remote-first culture and I have 3 years of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I like your remote-first culture and I have 3 years of Python."}
+
+- id: honesty-r6-ok-english-upper-intermediate
+  field: {"id": "a", "type": "select", "question": "How would you rate your written English?", "options": ["Basic", "Intermediate", "Upper intermediate", "Advanced"]}
+  llm_reply: {"answers": {"a": {"value": "Upper intermediate", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Upper intermediate"}

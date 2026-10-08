@@ -22,8 +22,11 @@ langchain llamaindex openai anthropic llm gpt chatgpt
 graphql grpc rest soap oauth jwt openapi swagger kubeflow mlflow
 rabbit celery sidekiq hibernate spring springboot maven gradle sbt npm yarn pnpm
 django-rest firebase supabase prisma sequelize sqlalchemy
+python python3 sql nosql plsql tsql c r excel sheets sharepoint powerapps sas stata spss vba macros
+unix windows macos svn mercurial xml json yaml regex ajax redux rxjs webpack three.js d3
 """.split())
-AMBIGUOUS = {"go", "make", "spark", "rust", "swift", "dart", "ruby", "next", "node", "express", "chef", "puppet",
+AMBIGUOUS = {"c", "r", "excel", "sheets", "macros", "go", "make", "spark", "rust", "swift", "dart", "ruby", "next",
+             "node", "express", "chef", "puppet",
              "rails", "apex", "dynamics", "rest", "oracle", "unity", "unreal", "julia", "bash", "helm", "rabbit",
              "gpt", "swagger", "vagrant", "packer", "tornado", "babel", "mocha", "jest", "sentry", "boomi"}
 CUES = {"lang", "language", "programming", "developer", "code", "coding", "framework", "library", "stack"}

@@ -252,22 +252,25 @@ Job postings and form labels are written by third parties and end up in the prom
    something that is not in the profile goes to manual review, and so does anything the check cannot read. Free-text
    answers are checked token by token against the profile, and anything unrecognised goes to manual review.
    In detail:
-   - Question side: unless the question is about a recognised non-claim topic (pay, notice, availability, work
-     authorization, relocation, location, contact details, links, consent, demographics and similar), every term
-     left in it after removing question words and generic nouns must be a profile skill, language, degree or
-     certificate. A multi-word skill matches by whole-word prefix (`REST APIs` is `REST APIs and integrations`). A
+   - Question side: the checks always run. A topic word (pay, notice, availability, work authorization,
+     relocation, location, remote, employer, contact details, consent, demographics and similar) is only dropped
+     from the question like any other generic word; a question is a pure non-claim topic only if nothing else is
+     left in it, and then it is the only case where a place, a name or a plain number is accepted without a fact.
+     `How many years have you worked with Kubernetes remotely?` is a Kubernetes question, not a "remote" one. Every
+     term left in a question must be a profile skill, language, degree or certificate. A multi-word skill matches by whole-word prefix (`REST APIs` is `REST APIs and integrations`). A
      bare label such as `Kubernetes?` is a claim question. Every named skill needs at least the years claimed, and a
      question that names none is limited by the profile's best skill.
    - The claim is the number in the answer (a number field must be a plain decimal; `3-5` claims 3, `5+` claims 5,
      `Less than 1` claims nothing, months count /12, spelled numbers such as `ten` or `diez` count), a yes (the
      question's threshold, such as `at least 5 years`, or just "the skill exists"), or a proficiency word.
-   - Text and text area answers: every technology-like word (digits, `+ # .`, CamelCase, ALL-CAPS, or a capitalised
+   - Text and text area answers are always checked, whatever the question: every technology-like word (digits, `+ # .`, CamelCase, ALL-CAPS, or a capitalised
      word in mid-sentence) must be a profile skill, appear in the question, or appear in the profile text (employer,
      place, name). Languages named in the answer need a `language` fact and a level not above it; a degree or
      certificate needs an `education` or `cert` fact; `Python for 9 years` or `Ten years of Python` is checked
-     against the skill's years. Lowercase names from a curated list of about 300 technologies (`jobagent/known_tech.py`) are checked too; a name outside the list is the known gap.
+     against the skill's years. Lowercase names from a curated list of about 300 technologies (`jobagent/known_tech.py`) are checked too; a name outside the list is the known gap. Only on a pure place or
+     name question (city, country, employer, links) are capitalised words left alone.
    - Languages: the level is mapped to CEFR (basic = A2, intermediate = B1, upper intermediate and professional
-     working = B2, advanced and fluent = C1, native = C2; a 1-5 rating is A1, A2, B1, B2, C2) and cannot be above the
+     working = B2, advanced and fluent = C1, native = C2; a 1-5 rating is A1, A2, B1, B2, C2; `fluently` counts as fluent) and cannot be above the
      fact's. A language that is not a fact, or a level word that cannot be read (`Excellent`), is rejected.
    - A yes to a degree needs an `education` fact of that level and, if the question names a subject (`degree in
      Medicine`), a fact whose name contains it. A yes to a certificate needs a `cert` fact with that name.
@@ -328,7 +331,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 106 | 106 | 100% |
+| honesty | 120 | 120 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

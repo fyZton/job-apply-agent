@@ -50,6 +50,19 @@ others share mention add information info question questions give
 sabes sabe saber manejas maneja manejar dominas domina dominar conoces conoce usas usa utilizas utiliza
 programas programa programado desarrollado desarrollas puedes puede escribir escribes implementado
 implementar gestionado construido cuenta cuentas hecho haces hacer
+here upper alto working limited zone hear heard hire hiring letter cover date start inicio fecha check sitio web hora
+horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annual yearly net gross mensual anual
+period periods days day weeks week dias semanas semana expected desired
+preferred earliest immediately eligible valid currently first last middle given family maiden profile url link
+links handle username mobile contact nombre apellidos
+""".split())
+# Countries and regions: a question that names where you may work names no technology.
+PLACES = set("""
+united states america usa canada mexico spain espana colombia argentina chile peru venezuela brazil brasil uruguay
+ecuador bolivia paraguay panama guatemala honduras salvador nicaragua cuba dominican republic puerto rico costa rica
+germany alemania france francia italy italia portugal netherlands holland belgium switzerland suiza austria poland
+ireland kingdom britain england scotland europe europa latam latin latina emea apac asia india china japan korea
+australia zealand africa israel turkey russia ukraine eu uk
 """.split())
 
 LANGS = {
@@ -92,7 +105,12 @@ NON_CLAIM = re.compile(
     r"referid|como te enteraste|gender|genero|pronoun|consent|consiento|\bterms\b|terminos|privacy|privacidad|"
     r"policy|politica|\bagree|acepto|background check|drug|disabilit|discapacidad|veteran|\brace\b|ethnic|"
     r"etnia|raza|employer|empleador|address|direccion|\bzip\b|postal|\bwhy\b|por que|motivat|cover letter|"
-    r"about yourself|sobre ti|tell us about|summary")
+    r"about yourself|sobre ti|tell us about|summary|confirm|acknowledg|declar|attest|reconozco")
+# Questions whose answer is a place, a name or a link: proper names in the answer are fine there.
+PLACE_Q = re.compile(r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
+                     r"\bzip\b|postal|\bname\b|nombre|apellido|surname|employer|empleador|linkedin|github|portfolio|"
+                     r"portafolio|website|sitio web|hear|referr|referid|enteraste|citizen|nationality|nacionalidad|"
+                     r"gender|genero|pronoun|time ?zone|zona horaria|school|university|universidad|company|empresa")
 EDU_Q = re.compile(r"\b(?:degree|bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
                    r"doctorado|diploma|titulo|grado|graduate|universit\w*|education|educacion|estudios|carrera)\b")
 CERT_Q = re.compile(r"\bcertif\w*|\bcertificad\w*")
@@ -120,7 +138,8 @@ def fold(text):
 
 
 def is_stop(tok):
-    return (tok in STOP or tok in RANK or CEFR.fullmatch(tok) or not any(c.isalnum() for c in tok) or tok[0].isdigit()
+    return (tok in STOP or tok in RANK or tok in PLACES or NON_CLAIM.search(tok) or CEFR.fullmatch(tok)
+            or not any(c.isalnum() for c in tok) or tok[0].isdigit()
             or tok.endswith("mente") or (len(tok) > 5 and tok.endswith("ly")))
 
 
@@ -138,7 +157,8 @@ def groups(text):
 
 
 def rank(text):
-    words = max((RANK.get(t, 0) for t in re.findall(r"[a-z0-9]+", text)), default=0)
+    words = max((RANK.get(t) or RANK.get(t[:-2], 0) if t.endswith("ly") else RANK.get(t, 0)
+                  for t in re.findall(r"[a-z0-9]+", text)), default=0)
     return max([words] + [r for p, r in PHRASES.items() if p in text])
 
 
@@ -259,6 +279,7 @@ PURE_CERT = re.compile(r"\b(?:pmp|capm|cka|ckad|cks|cissp|cisa|cism|itil|ccna|cc
 # A cert fact backs a name only where the text is about certificates (a vendor name alone is a skill claim).
 CERT_CTX = re.compile(r"\bcertif\w*|\bholds?\b|\b(?:pmp|capm|cka|ckad|cks|cissp|cisa|cism|"
                       r"itil|ccna|ccnp|csm|psm|oscp|ceh|togaf|prince2|comptia|ielts|toefl)\b")
+SCRUM = re.compile(r"\bscrum masters?\b")
 CERTIFIED = re.compile(r"\b(?:certified|certificad[oa])\b")
 ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|masters?|maestria|mba|msc|bachelors?|licenciatura|bsc)\b")
 SUBJECT = re.compile(r"\b(?:degrees?|bachelors?|masters?|phd|doctorate|doctorado|licenciatura|maestria|grado|titulo|"
@@ -305,7 +326,7 @@ def known_tech(raw):
     return out
 
 
-def _tech_like(word, start, after):
+def _tech_like(word, start, after, names=True):
     """The word of a free-text answer looks like a technology or proper name: letters with digits or + # .,
     CamelCase, ALL-CAPS, or a capitalised word that does not just start a sentence."""
     f = fold(word)
@@ -317,18 +338,18 @@ def _tech_like(word, start, after):
         return True
     if len(word) >= 2 and word.isupper():
         return True
-    if word[0].isupper() and f not in STOP and f not in LANGS:
+    if names and word[0].isupper() and f not in STOP and f not in LANGS:
         return not start or SENTENCE_START.match(after) is not None
     return False
 
 
-def answer_runs(raw):
+def answer_runs(raw, names=True):
     """The runs of adjacent technology-like words in a free-text answer, as lists of folded tokens."""
     runs, cur, last = [], [], 0
     for m in WORD.finditer(raw):
         before = raw[:m.start()].rstrip(" \t\"'(*•-¿¡")
         start = not before or before[-1] in ".!?\n"
-        if _tech_like(m.group(), start, raw[m.end():m.end() + 12]):
+        if _tech_like(m.group(), start, raw[m.end():m.end() + 12], names):
             if cur and raw[last:m.start()].strip():
                 runs.append(cur)
                 cur = []
@@ -416,9 +437,16 @@ class Claims:
                     i += 1
         return matched, unmatched
 
+    def _topic(self, q):
+        """The folded question is only about a non-claim topic (pay, dates, place, consent...): once its topic
+        words are removed it names no skill, language, degree, certificate or technology."""
+        return (bool(NON_CLAIM.search(q)) and not EXP_WORDS.search(q) and not groups(LANG_RX.sub(" ", q))
+                and not (LANG_RX.search(q) or EDU_Q.search(q) or CERT_Q.search(q) or PURE_CERT.search(q)
+                         or known_tech(q)))
+
     def years_q(self, text):
         t = fold(text)
-        return bool(YEARS_Q.search(t)) and not (NON_CLAIM.search(t) and not EXP_WORDS.search(t))
+        return bool(YEARS_Q.search(t)) and not self._topic(t)
 
     def named(self, text):
         """The profile skills a question names."""
@@ -435,13 +463,13 @@ class Claims:
         t, v = fold(text), spell(fold(value))
         kind = answer_kind(v)
         why = ""
-        topic = bool(NON_CLAIM.search(t) and not EXP_WORDS.search(t))
-        if not topic:
-            if self.facts:
-                why = self._language(t, v, kind) or self._credential(t, v, kind)
-            why = why or self._skill_claim(field, text, t, v, kind)
+        q = fold(field.get("question") or text)  # the topic is the question's, not the fieldset legend's
+        topic = self._topic(q)
+        if self.facts:
+            why = self._language(t, v, kind) or self._credential(t, v, kind)
+        why = why or self._skill_claim(field, text, t, v, kind, topic)
         if not why and field["type"] in ("text", "textarea"):
-            why = self._answer_claims(str(value), t, topic)
+            why = self._answer_claims(str(value), t, topic and bool(PLACE_Q.search(q)))
         return not why, why
 
     def _language(self, t, v, kind):
@@ -493,12 +521,12 @@ class Claims:
             left = [tok for tok in left if not any(tok in toks for _, toks in self.edu_facts)]
         return left
 
-    def _skill_claim(self, field, text, t, v, kind):
-        if kind == "no":
+    def _skill_claim(self, field, text, t, v, kind, topic=False):
+        if kind == "no" or topic:  # a pure topic question names nothing the profile could back
             return ""
         opts = field.get("options") or ()
         runs = groups(LANG_RX.sub(" ", t))
-        years_q = bool(YEARS_Q.search(t)) or any(YEARS_Q.search(fold(o)) for o in opts)
+        years_q = (bool(YEARS_Q.search(t)) or any(YEARS_Q.search(fold(o)) for o in opts))
         months_q, ftype = bool(MONTHS.search(t)), field["type"]
         years, exists = None, False
         if ftype == "number":
@@ -542,7 +570,7 @@ class Claims:
             return f"claims {years:g} years, above the profile's best skill ({self.best:g})"
         return ""
 
-    def _answer_claims(self, raw, t, topic):
+    def _answer_claims(self, raw, t, places):
         """A text answer may not name a technology, language, degree or certificate (or years of one) that the
         profile does not back. Each technology-like word must be a skill, be in the question, or be in the
         profile; anything else is rejected. ponytail: a lowercase unknown technology ("kubernetes") is not seen."""
@@ -551,7 +579,7 @@ class Claims:
             matched, unmatched = self.resolve([TOKEN.findall(name)])
             if left := self._unbacked(unmatched, f"{t} {v}", t):
                 return f"the answer names {' '.join(left)!r}, which is not in the profile"
-        for run in [] if topic else answer_runs(raw):  # a place or a name answers a non-claim topic
+        for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])
             if left := self._unbacked(unmatched, f"{t} {v}", t):
                 return f"the answer names {' '.join(left)!r}, which is not in the profile"
@@ -581,7 +609,9 @@ class Claims:
                 return f"the answer claims {lang}, which is not in the profile"
             if level > self.langs[lang]:
                 return f"the answer claims a {lang} level above the profile's"
-        degrees = ANS_DEG.findall(v)
+        if SCRUM.search(v) and not any("scrum" in c for c in self.certs):
+            return "the answer claims a certification, which is not in the profile"
+        degrees = ANS_DEG.findall(SCRUM.sub(" ", v))
         if degrees:
             need = edu_rank(" ".join(degrees))
             if not any(r >= need and self._subject_ok(v, words) for r, words in self.edu_facts):
