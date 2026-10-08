@@ -18,7 +18,7 @@ def cv_text():
 
 def reply(monkeypatch, facts):
     calls = []
-    monkeypatch.setattr(llm, "extract_cv_facts", lambda text, model="sonnet": calls.append(text) or facts)
+    monkeypatch.setattr(llm, "extract_cv_facts", lambda text, model=None: calls.append(text) or facts)
     return calls
 
 
@@ -84,7 +84,9 @@ def test_llm_facts_with_real_quotes_are_kept(cv_text, monkeypatch):
     draft = cvparse.draft_from_text(cv_text, use_llm=True)
     facts = {f["id"]: f for f in draft["facts"]}
     assert set(facts) == {"skill.python", "cert.aws-cloud-practitioner", "exp.acme-2023", "lang.english"}
-    assert facts["exp.acme-2023"]["bullets"] == [{"id": "exp.acme-2023.b1", "text": "Built REST integrations"}]
+    # the stored bullet is the CV's own wording, not the model's paraphrase
+    assert facts["exp.acme-2023"]["bullets"] == [
+        {"id": "exp.acme-2023.b1", "text": "Built REST integrations between internal"}]
     assert all("source" not in f for f in facts.values())
     assert prof.validate({**draft, "last_name": "Example"}) == []
 
@@ -100,7 +102,7 @@ def test_fact_with_an_invented_source_quote_is_dropped(cv_text, monkeypatch):
     ])
     draft = cvparse.draft_from_text(cv_text, use_llm=True, log=logs.append)
     assert [f["id"] for f in draft["facts"]] == ["skill.python"]
-    assert any("Dropped 4" in m for m in logs)
+    assert any("Dropped 4 facts not backed" in m for m in logs)
 
 
 def test_malformed_llm_output_is_ignored(cv_text, monkeypatch):
@@ -134,7 +136,7 @@ def test_fake_backend_extracts_nothing(monkeypatch):
 def test_llm_failure_falls_back_to_the_regex_draft(cv_text, monkeypatch):
     logs = []
 
-    def boom(text, model="sonnet"):
+    def boom(text, model=None):
         raise llm.ConfigError("no claude command")
 
     monkeypatch.setattr(llm, "extract_cv_facts", boom)
@@ -174,3 +176,111 @@ def test_cli_from_cv_reports_a_bad_file(tmp_path):
     with pytest.raises(SystemExit) as exc:
         cli.setup_mode(tmp_path, from_cv=tmp_path / "missing.txt")
     assert "missing.txt" in str(exc.value)
+
+
+# --- every claimed value must be in the quote -----------------------------------------------------------
+
+def facts_for(monkeypatch, text, items, logs=None):
+    reply(monkeypatch, items)
+    draft = cvparse.draft_from_text(text, use_llm=True, log=(logs if logs is not None else []).append)
+    return draft["facts"]
+
+
+def test_years_not_in_the_quote_are_dropped_but_the_fact_stays(cv_text, monkeypatch):
+    logs = []
+    facts = facts_for(monkeypatch, cv_text, [
+        {"kind": "skill", "name": "Python", "years": 9, "source": "Python (3 years)"},
+        {"kind": "skill", "name": "SQL", "years": 2, "source": "SQL (2 years)"}], logs)
+    assert facts == [{"id": "skill.python", "kind": "skill", "name": "Python"},
+                     {"id": "skill.sql", "kind": "skill", "name": "SQL", "years": 2}]
+    assert any("unverified: years" in m and "Python" in m for m in logs)
+
+
+@pytest.mark.parametrize("item, missing", [
+    ({"kind": "cert", "name": "AWS Cloud Practitioner", "year": 2019,
+      "source": "AWS Cloud Practitioner, 2024"}, "year"),
+    ({"kind": "language", "name": "English", "level": "C2", "source": "English B2"}, "level"),
+    ({"kind": "education", "name": "B.Sc. Computer Science", "year": 2010,
+      "source": "B.Sc. Computer Science, 2023"}, "year"),
+])
+def test_other_unbacked_values_are_dropped(cv_text, monkeypatch, item, missing):
+    logs = []
+    (fact,) = facts_for(monkeypatch, cv_text, [item], logs)
+    assert missing not in fact and any(f"unverified: {missing}" in m for m in logs)
+
+
+def test_dates_must_be_in_the_quote(cv_text, monkeypatch):
+    logs = []
+    (fact,) = facts_for(monkeypatch, cv_text, [
+        {"kind": "experience", "title": "Backend Developer", "org": "Acme", "start": "2019-05", "end": "present",
+         "source": "Backend Developer, Acme, 2023-01 to present"}], logs)
+    assert "start" not in fact and fact["end"] == "present"  # kept for the interview to ask the start
+    assert any("unverified: start" in m for m in logs)
+
+
+def test_name_is_matched_by_whole_word(monkeypatch):
+    text = "Skills\nStudied chemistry and Python (3 years)\n"
+    assert facts_for(monkeypatch, text, [{"kind": "skill", "name": "C", "years": 3,
+                                          "source": "Studied chemistry and Python (3 years)"}]) == []
+
+
+def test_c_plus_plus_and_c_sharp_are_not_c(monkeypatch):
+    text = "Languages: C++ (4 years), C# (2 years)\n"
+    assert facts_for(monkeypatch, text, [{"kind": "skill", "name": "C", "years": 4,
+                                          "source": "C++ (4 years)"}]) == []
+    facts = facts_for(monkeypatch, text, [
+        {"kind": "skill", "name": "C++", "years": 4, "source": "C++ (4 years)"},
+        {"kind": "skill", "name": "C#", "years": 2, "source": "C# (2 years)"}])
+    assert [f["name"] for f in facts] == ["C++", "C#"] and len({f["id"] for f in facts}) == 2
+
+
+def test_quote_longer_than_300_chars_is_cut(cv_text, monkeypatch):
+    quote = "Python (3 years)" + " " * 5 + "x" * 400
+    assert facts_for(monkeypatch, cv_text, [{"kind": "skill", "name": "Python", "years": 3, "source": quote}]) == []
+
+
+def test_bullet_text_must_be_in_the_cv(cv_text, monkeypatch):
+    (fact,) = facts_for(monkeypatch, cv_text, [
+        {"kind": "experience", "title": "Backend Developer", "org": "Acme", "start": "2023-01", "end": "present",
+         "source": "Backend Developer, Acme, 2023-01 to present",
+         "bullets": [{"text": "Led a team of 20", "source": "Led a team of 20 engineers"},
+                     {"text": "Made things", "source": "Built REST integrations between internal services"}]}])
+    assert [b["text"] for b in fact["bullets"]] == ["Built REST integrations between internal services"]
+
+
+def test_extra_keys_are_dropped_and_wrong_types_ignored(cv_text, monkeypatch):
+    facts = facts_for(monkeypatch, cv_text, [
+        {"kind": "skill", "name": "Python", "years": 3, "source": "Python (3 years)", "id": "skill.x",
+         "admin": True, "org": "Evil"},
+        {"kind": ["skill"], "name": "Python", "source": "Python (3 years)"},
+        {"kind": "skill", "name": ["Python"], "source": "Python (3 years)"},
+        {"kind": "skill", "name": "SQL", "years": "2", "source": "SQL (2 years)"},
+        {"kind": "skill", "name": "Docker", "years": True, "source": "Docker (1 year)"}])
+    assert facts[0] == {"id": "skill.python", "kind": "skill", "name": "Python", "years": 3}
+    assert [f["name"] for f in facts] == ["Python", "SQL", "Docker"]
+    assert all("years" not in f for f in facts[1:])  # a string or a bool is not a number of years
+
+
+def test_non_list_reply_is_logged_and_the_regex_draft_is_kept(cv_text, monkeypatch):
+    logs = []
+    reply(monkeypatch, None)
+    draft = cvparse.draft_from_text(cv_text, use_llm=True, log=logs.append)
+    assert draft["facts"] == [] and draft["email"] == "alex@example.com"
+    assert any("only contact details" in m for m in logs)
+
+
+def test_dropped_facts_are_counted_by_reason(cv_text, monkeypatch):
+    logs = []
+    facts_for(monkeypatch, cv_text, [
+        {"kind": "skill", "name": "Rust", "years": 2, "source": "Rust (2 years)"},       # not in the CV
+        {"kind": "skill", "name": "Python", "years": -1, "source": "Python (3 years)"},  # dropped value, fine
+        {"kind": "hobby", "name": "x", "source": "x"}, 5], logs)
+    text = "\n".join(logs)
+    assert "Dropped 1 facts not backed" in text and "Dropped 2 invalid" in text
+
+
+def test_truncation_is_logged(monkeypatch):
+    logs = []
+    calls = reply(monkeypatch, [])
+    cvparse.draft_from_text("Alex Example\n" + "x " * 20000, use_llm=True, log=logs.append)
+    assert len(calls[0]) <= cvparse.MAX_CHARS and any("truncat" in m.lower() for m in logs)
