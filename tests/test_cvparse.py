@@ -621,3 +621,25 @@ def test_skill_in_a_negated_clause_is_dropped(monkeypatch):
         {"kind": "skill", "name": "Kubernetes", "source": "No experience with Kubernetes."},
         {"kind": "skill", "name": "Python", "years": 3, "source": "Python (3 years)"}])
     assert [f["name"] for f in facts] == ["Python"]
+
+
+def test_a_quote_spanning_two_jobs_cannot_pair_one_title_with_the_other_dates(monkeypatch):
+    text = "Data Analyst, Beta, 2019-05 to 2020-12\nBackend Developer, Acme, 2023-01 to present\n"
+    (fact,) = facts_for(monkeypatch, text, [
+        {"kind": "experience", "title": "Backend Developer", "org": "Acme", "start": "2019-05", "end": "2020-12",
+         "source": text.strip()}])
+    assert "start" not in fact and "end" not in fact
+
+
+def test_dates_next_to_the_org_are_kept(monkeypatch):
+    text = "Data Analyst, Beta, 2019-05 to 2020-12\nBackend Developer, Acme, 2023-01 to present\n"
+    (fact,) = facts_for(monkeypatch, text, [
+        {"kind": "experience", "title": "Backend Developer", "org": "Acme", "start": "2023-01", "end": "present",
+         "source": text.strip()}])
+    assert fact["start"] == "2023-01" and fact["end"] == "present"
+
+
+def test_title_must_sit_next_to_its_org(monkeypatch):
+    text = "Data Analyst at Beta 2019-2020; Backend Developer at Acme 2023 to present\n"
+    items = [{"kind": "experience", "title": "Data Analyst", "org": "Acme", "start": "2023-01", "source": text.strip()}]
+    assert facts_for(monkeypatch, text, items) == []

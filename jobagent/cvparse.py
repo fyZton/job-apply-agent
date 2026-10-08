@@ -157,15 +157,16 @@ YEARS_IN_QUOTE = re.compile(rf"(?<!\d)(?<!\d )(\d{{1,2}})\+?\s*{_YEARS_WORD}\b|\
 MAX_YEARS = 60
 
 
-def _near(name, source):
+def _near(name, source, reach=(5, 3), commas=True):
     """The text on each side of `name` in the raw quote that its years may come from: up to 5 words before
     and 3 after, never past a comma, semicolon, line break or closing parenthesis. "Python, Java
-    (8 years)" gives Java its 8 years, not Python."""
+    (8 years)" gives Java its 8 years, not Python. `reach` and `commas=False` widen it for a job's title and dates,
+    which stop only at a line break or semicolon."""
     text = "".join(c for c in unicodedata.normalize("NFKD", source.lower()) if unicodedata.category(c) != "Mn")
     seq = []  # words; None where a clause ends
     for tok in re.findall(r"[()]|[^\s()]+", re.sub(r"\s*\n\s*", " ; ", text)):
         seq += _norm(tok).split()
-        if tok == ")" or tok[-1] in ",;":
+        if commas and (tok == ")" or tok[-1] in ",") or tok[-1] in ";":
             seq.append(None)
     words = _norm(name).split()
     sides = []
@@ -173,11 +174,11 @@ def _near(name, source):
         if seq[i:i + len(words)] == words:
             before, after = [], []
             for w in reversed(seq[:i]):
-                if w is None or len(before) == 5:
+                if w is None or len(before) == reach[0]:
                     break
                 before.insert(0, w)
             for w in seq[i + len(words):]:
-                if w is None or len(after) == 3:
+                if w is None or len(after) == reach[1]:
                     break
                 after.append(w)
             sides += [" ".join(before), " ".join(after)]
@@ -206,8 +207,8 @@ def _date_in(value, q):
 def _verified(key, value, q, name, source):
     if key == "years":
         return _number_in(value, _near(name, source))
-    if key in ("start", "end"):
-        return _date_in(value, q)
+    if key in ("start", "end"):  # next to the org name, so a quote of two jobs cannot mix their dates
+        return any(_date_in(value, side) for side in _near(name, source, (8, 8), commas=False))
     # year, org, level: next to the fact's name, like its years, not anywhere in the quote
     sides = _near(name, source)
     if key == "year":
@@ -259,9 +260,14 @@ def _fact(raw, haystack, used, log, text=None):
         if not _has(raw[key], q):
             return None, "unbacked"
         fact[key] = raw[key].strip()
+    if kind == "experience":  # the title sits next to its org, not just somewhere in the quote
+        sides = _near(fact["org"], _span(raw.get("source"), text) or "", (8, 8), commas=False)
+        if not any(_has(fact["title"], side) for side in sides):
+            return None, "unbacked"
     for key in CHECKED[kind]:
         if key in raw:
-            if _verified(key, raw[key], q, fact[MAIN[kind][0]], _span(raw["source"], text) or ""):
+            anchor = fact["org"] if kind == "experience" else fact[MAIN[kind][0]]
+            if _verified(key, raw[key], q, anchor, _span(raw["source"], text) or ""):
                 fact[key] = raw[key].strip() if isinstance(raw[key], str) else raw[key]
             else:
                 log(f"unverified: {key} of {fact[MAIN[kind][0]]!r} is not in its quote, left out")

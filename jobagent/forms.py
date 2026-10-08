@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from jobagent import llm
-from jobagent.claims import Claims, fold
+from jobagent.claims import CHECKED, Claims, fold
 from jobagent.core import pause
 from jobagent.facts import check_citations, load_facts
 from jobagent.safety import is_sensitive, looks_injected
@@ -332,7 +332,7 @@ class FormAssistant:
                     if i is not None:
                         _set_checked(root.locator(f'[data-ap="{f["id"]}_{i}"]'), True)
                 elif f["type"] == "checkbox":
-                    check = str(value).lower() in ("true", "1", "checked", "yes", "sí", "si")
+                    check = str(value).strip().lower() in CHECKED
                     _set_checked(root.locator(f'[data-ap="{f["id"]}"]'), check)
                 elif f["type"] == "select":
                     i = best_option(value, f["options"])

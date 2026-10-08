@@ -1496,3 +1496,199 @@
   field: {"id": "a", "type": "textarea", "question": "Cover letter"}
   llm_reply: {"answers": {"a": {"value": "I have worked for 18 months with Python.", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "I have worked for 18 months with Python."}
+
+# Round 15: everyday questions (mirrors tests/test_common_questions.py) and checkbox / level-word probes.
+- id: honesty-r15-age-18
+  field: {"id": "a", "type": "radio", "question": "Are you at least 18 years old?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-age-es
+  field: {"id": "a", "type": "radio", "question": "¿Eres mayor de edad?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}
+
+- id: honesty-r15-start-text
+  field: {"id": "a", "type": "text", "question": "When can you start?"}
+  llm_reply: {"answers": {"a": {"value": "In 2 weeks", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "In 2 weeks"}
+
+- id: honesty-r15-disponibilidad
+  field: {"id": "a", "type": "radio", "question": "¿Tienes disponibilidad inmediata?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}
+
+- id: honesty-r15-notice-es
+  field: {"id": "a", "type": "text", "question": "¿Cuál es tu periodo de preaviso?"}
+  llm_reply: {"answers": {"a": {"value": "2 semanas", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "2 semanas"}
+
+- id: honesty-r15-full-time
+  field: {"id": "a", "type": "radio", "question": "Are you available to work full-time?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-contract-basis
+  field: {"id": "a", "type": "radio", "question": "Are you willing to work on a contract basis?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-freelance
+  field: {"id": "a", "type": "radio", "question": "Are you open to freelance projects?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-office-3-days
+  field: {"id": "a", "type": "radio", "question": "Can you work from our office 3 days a week?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-hybrid
+  field: {"id": "a", "type": "radio", "question": "Can you work in a hybrid model?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-remote-es
+  field: {"id": "a", "type": "radio", "question": "¿Aceptas trabajar de forma remota?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}
+
+- id: honesty-r15-work-mode
+  field: {"id": "a", "type": "select", "question": "Preferred work mode", "options": ["On-site", "Hybrid", "Remote"]}
+  llm_reply: {"answers": {"a": {"value": "Remote", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Remote"}
+
+- id: honesty-r15-authorized
+  field: {"id": "a", "type": "radio", "question": "Are you legally authorized to work in Spain?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-located
+  field: {"id": "a", "type": "text", "question": "Where are you located?"}
+  llm_reply: {"answers": {"a": {"value": "Caracas, Venezuela", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Caracas, Venezuela"}
+
+- id: honesty-r15-based
+  field: {"id": "a", "type": "text", "question": "Where are you based?"}
+  llm_reply: {"answers": {"a": {"value": "Caracas", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Caracas"}
+
+- id: honesty-r15-country
+  field: {"id": "a", "type": "text", "question": "Country of residence"}
+  llm_reply: {"answers": {"a": {"value": "Venezuela", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Venezuela"}
+
+- id: honesty-r15-time-zone
+  field: {"id": "a", "type": "text", "question": "What's your time zone?"}
+  llm_reply: {"answers": {"a": {"value": "UTC-4", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "UTC-4"}
+
+- id: honesty-r15-est-zone
+  field: {"id": "a", "type": "radio", "question": "Can you work in the EST time zone?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-overlap
+  field: {"id": "a", "type": "radio", "question": "Can you overlap 4 hours with US Eastern time?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-salary-whats
+  field: {"id": "a", "type": "number", "question": "What's your expected salary?"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r15-pretension
+  field: {"id": "a", "type": "number", "question": "Pretensión salarial"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r15-sueldo
+  field: {"id": "a", "type": "number", "question": "Sueldo pretendido"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r15-hear-vacancy
+  field: {"id": "a", "type": "text", "question": "How did you hear about this vacancy?"}
+  llm_reply: {"answers": {"a": {"value": "LinkedIn", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "LinkedIn"}
+
+- id: honesty-r15-hear-es-vacante
+  field: {"id": "a", "type": "text", "question": "¿Cómo te enteraste de esta vacante?"}
+  llm_reply: {"answers": {"a": {"value": "Computrabajo", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Computrabajo"}
+
+- id: honesty-r15-hear-es-nosotros
+  field: {"id": "a", "type": "text", "question": "¿Cómo te enteraste de nosotros?"}
+  llm_reply: {"answers": {"a": {"value": "LinkedIn", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "LinkedIn"}
+
+- id: honesty-r15-employment-status
+  field: {"id": "a", "type": "select", "question": "What is your employment status?", "options": ["Employed", "Unemployed", "Student"]}
+  llm_reply: {"answers": {"a": {"value": "Employed", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Employed"}
+
+- id: honesty-r15-situacion-laboral
+  field: {"id": "a", "type": "select", "question": "Situación laboral actual", "options": ["Empleado", "Desempleado"]}
+  llm_reply: {"answers": {"a": {"value": "Empleado", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Empleado"}
+
+- id: honesty-r15-total-years
+  field: {"id": "a", "type": "number", "question": "What's your total years of experience?"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r15-english-level-whats
+  field: {"id": "a", "type": "select", "question": "What's your English proficiency?", "options": ["Basic", "Intermediate", "Upper intermediate", "Advanced", "Native"]}
+  llm_reply: {"answers": {"a": {"value": "Upper intermediate", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Upper intermediate"}
+
+- id: honesty-r15-team-player
+  field: {"id": "a", "type": "radio", "question": "Are you a team player?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-privacy
+  field: {"id": "a", "type": "checkbox", "question": "I agree to the privacy policy"}
+  llm_reply: {"answers": {"a": {"value": true, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "True"}
+
+- id: honesty-r15-drug-test
+  field: {"id": "a", "type": "radio", "question": "Are you willing to take a drug test?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-phone-calls
+  field: {"id": "a", "type": "radio", "question": "Do you agree to receive phone calls?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r15-checkbox-one-phd
+  field: {"id": "a", "type": "checkbox", "question": "I hold a PhD"}
+  llm_reply: {"answers": {"a": {"value": 1, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r15-checkbox-one-c2
+  field: {"id": "a", "type": "checkbox", "question": "My English is at C2 level"}
+  llm_reply: {"answers": {"a": {"value": 1, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r15-radio-one-master
+  field: {"id": "a", "type": "radio", "question": "I hold a Master's degree", "options": ["1", "0"]}
+  llm_reply: {"answers": {"a": {"value": "1", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r15-expert-python-yes
+  field: {"id": "a", "type": "radio", "question": "Are you an expert software developer?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r15-expert-es
+  field: {"id": "a", "type": "radio", "question": "¿Eres experto en Docker?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r15-advanced-python-yes
+  field: {"id": "a", "type": "radio", "question": "Do you have advanced knowledge of Python?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}

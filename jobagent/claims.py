@@ -56,6 +56,7 @@ engineering ingenieria processing process data application applications
 highest education educacion university universidad universitario universitaria completed educativo academic
 academico estudios titulo level
 minimum maximum least trabajando trabajas
+need needs home conditions condition speaker speakers actual take takes took
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently legally receive calls call require requires now future
 first last middle given family maiden
@@ -126,6 +127,8 @@ employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
 old older adult adults mayor mayores edad accept accepts
+employment status situacion laboral mode basis periodo vacante vacancy opening opportunity oportunidad oferta
+posicion position puesto nosotros estado
 salarial salariales aspiracion aspiraciones deseado deseada pretendido pretendida renta empezar comenzar preferida
 preferido instruccion employed unemployed empleado empleada title titles cargo
 whats whos wheres hows whens whys youre youd youve youll im ive dont doesnt isnt arent wont cant theres thats lets
@@ -173,7 +176,8 @@ before after tax taxes impuestos and y or o around circa to
 SALARY_Q = re.compile(r"\b(?:salary|salaries|salario|salarios|sueldo|compensation|wage|pay|hourly|remuneracion|"
                       r"salarial|pretension|aspiracion|deseado|pretendido|renta)\b")
 # Questions whose answer is a place, a name or a link: proper names in the answer are fine there.
-PLACE_Q = re.compile(r"disponib|availab|empezar|comenzar|modalidad|work mode|instruccion|title|cargo|employed|"
+PLACE_Q = re.compile(r"employment|status|situacion|laboral|\bmode\b|vacan|oferta|oportunidad|opportunity|nosotros|"
+                     r"disponib|availab|empezar|comenzar|modalidad|work mode|instruccion|title|cargo|employed|"
                      r"empleado|located|based|\blive\b|living|\blives\b|reside|ubicad|\bvives?\b|vivo|"
                      r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
                      r"\bzip\b|postal|\bname\b|nombre|apellido|surname|employer|empleador|linkedin|github|portfolio|"
@@ -198,7 +202,8 @@ CLAIM_RX = re.compile(r"\b(?:experience|expertise|worked|used|using|familiar|kno
                       r"manejo|dominio)\s+(?:con|en|de|del)\s+")
 PREP = {"of", "with", "in", "de", "con", "en", "using", "usando", "on", "at", "del"}
 CONJ = {"and", "y", "or", "o", "e", "u"}
-YES = {"yes", "y", "si", "true", "checked", "sure"}
+YES = {"yes", "y", "si", "true", "checked", "sure", "1", "on"}
+CHECKED = {"true", "1", "checked", "yes", "s\u00ed", "si", "on"}  # what apply_answers ticks
 NO = {"no", "none", "ninguno", "ninguna", "false", "not", "never", "nunca", "0"}
 
 
@@ -207,7 +212,8 @@ ROLE_PHRASES = tuple((re.compile(rx), w) for rx, w in (
     (r"\b(?:team|tech|technical) lead(?:er)?\b", "teamlead"), (r"\bdata engineer\w*", "dataengineer"),
     (r"\bdata analy\w+", "dataanalyst"), (r"\bdata scien\w+", "datascientist"),
     (r"\bscrum master\b", "scrummaster"), (r"\bproduct manager\b", "productmanager"),
-    (r"\bvice[- ]president\b", "vp"), (r"\bco[- ]?founder\b", "cofounder"), (r"\bchief \w+ officer\b", "ceo"),
+    (r"\bdrug tests?\b", "drug"), (r"\bvice[- ]president\b", "vp"), (r"\bco[- ]?founder\b", "cofounder"),
+    (r"\bchief \w+ officer\b", "ceo"),
     (r"\bproject manager\b", "projectmanager"), (r"\bmobile (?:phone|number|no\.?|telephone)\b", "phone number"),
 ))
 DOTNET = re.compile(r"(?<![\w.])\.net\b|\bdot ?net\b")
@@ -756,6 +762,8 @@ class Claims:
         certificate or language the profile lacks."""
         if not self.enabled:
             return True, ""
+        if field["type"] == "checkbox":  # check what will be filled: the box is ticked or it is not
+            value = "true" if str(value).strip().lower() in CHECKED else "false"
         if fold(value).strip() in self.links:
             return True, ""
         value = positive(str(value))  # what is left once the negated clauses are out
@@ -917,6 +925,16 @@ class Claims:
         unmatched = self._unbacked(unmatched, f"{t} {v}", strict=True)
         if unmatched:
             return f"claims experience with {' '.join(unmatched)!r}, which is not in the profile"
+        qword = 0 if kind != "yes" or LANG_RX.search(t) else max(
+            (RANK.get(w) or RANK.get(w[:-2], 0) if w.endswith("ly") else RANK.get(w, 0)
+             for w in re.findall(r"[a-z]+", t)), default=0)
+        if qword >= 5:  # "Are you an expert in Docker?" Yes: the years of an expert, or the best skill's
+            need = WORD_YEARS.get(qword, 0)
+            for name, have in matched.items():
+                if have < need:
+                    return f"claims a level of {name} above the {have:g} years the profile has"
+            if not matched and self.best < need:
+                return f"claims an expert level above the profile's best skill ({self.best:g} years)"
         word = 0 if kind or years_q or rating or LANG_RX.search(t) else rank(v)
         if word and (matched or EXP_WORDS.search(t) or RATING_Q.search(t)):
             # "Expert" in Python needs the years of an expert, and not the top of the scale

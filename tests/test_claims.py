@@ -737,3 +737,44 @@ R14_REJECT = [
 @pytest.mark.parametrize("type_, question, value, options", R14_REJECT)
 def test_round14_rejects(type_, question, value, options):
     assert not verdict_q(question, value, type_, options, profile=CS)
+
+
+# --- round 15 --------------------------------------------------------------------------------------------------------
+
+R15_REJECT = [
+    ("checkbox", "I hold a PhD", 1, None),
+    ("checkbox", "I hold a PhD", "1", None),
+    ("checkbox", "My English level is C2", 1, None),
+    ("radio", "I hold a Master's degree", "1", ["1", "0"]),
+    ("select", "I hold a Master's degree", "1", ["0", "1"]),
+    ("radio", "Are you an expert in Docker?", "Yes", None),
+    ("radio", "Do you have advanced knowledge of Docker?", "Yes", None),
+    ("radio", "¿Eres experto en Docker?", "Sí", ["Sí", "No"]),
+    ("checkbox", "I am an expert in Docker", True, None),
+    ("radio", "Are you an expert software developer?", "Yes", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R15_REJECT)
+def test_round15_rejects(type_, question, value, options):
+    assert not verdict_q(question, value, type_, options, profile=CS)
+
+
+R15_ACCEPT = [
+    ("radio", "Do you have advanced knowledge of Python?", "Yes", None),
+    ("checkbox", "I hold a PhD", 0, None),
+    ("checkbox", "I hold a PhD", "0", None),
+    ("select", "What is your employment status?", "Employed", ["Employed", "Unemployed"]),
+    ("select", "What is your employment status?", "Unemployed", ["Employed", "Unemployed"]),
+    ("select", "Situación laboral actual", "Empleado", ["Empleado", "Desempleado"]),
+    ("select", "Preferred work mode", "Remote", ["On-site", "Remote"]),
+    ("radio", "Are you willing to work on a contract basis?", "Yes", None),
+    ("text", "¿Cuál es tu periodo de preaviso?", "2 semanas", None),
+    ("text", "¿Cómo te enteraste de esta vacante?", "LinkedIn", None),
+    ("text", "How did you hear about this opportunity?", "LinkedIn", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R15_ACCEPT)
+def test_round15_accepts(type_, question, value, options):
+    assert verdict_q(question, value, type_, options, profile=CS)

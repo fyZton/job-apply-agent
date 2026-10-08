@@ -162,7 +162,7 @@ CV. A fact is kept only if the quote is in the CV text and contains the fact's n
 match `chemistry` or `C++`). Every number or date the model claims, such as years, a year, start and end dates or a
 language level, must also be in the quote; one that is not is left out, logged as `unverified`, and the rest of the
 fact is kept. A years value must be a number from 0 to 60 written next to `year`, `years`, `yr`, `yrs` or `años`
-in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years. The number must also sit next to that skill's name (up to 5 words before or 3 after, never past a comma, semicolon or closing parenthesis), so in `Python, Java (8 years)` Java gets 8 and Python gets none. The model's quote is looked up in the original CV text (whitespace and case may differ, punctuation may not) and the window is read from there, so a quote rewritten as `Python Java 8 years` gets no years at all.
+in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years. The number must also sit next to that skill's name (up to 5 words before or 3 after, never past a comma, semicolon or closing parenthesis), so in `Python, Java (8 years)` Java gets 8 and Python gets none. The model's quote is looked up in the original CV text (whitespace and case may differ, punctuation may not) and the window is read from there, so a quote rewritten as `Python Java 8 years` gets no years at all. A job's title and dates must also sit next to its organisation (up to 8 words each side, stopping at a line break or semicolon), so a quote that spans two jobs cannot give one job's title the other's dates.
 Quotes must match at word boundaries, so `Java 5 years` is not backed by `RxJava 5 years`. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
 log by reason (not backed by the CV, or invalid).
 
@@ -342,6 +342,13 @@ Job postings and form labels are written by third parties and end up in the prom
    - Spanish screening wording (`pretensión salarial`, `aspiración`, `disponibilidad para empezar`, `modalidad preferida`,
      `grado de instrucción`) and employment status or job title questions are ordinary topics; a title has to be one the
      profile holds. A rating with a scale (`Python level (1-10)`) is a rating, not years.
+   - What is checked is what is filled: a checkbox counts as ticked for `true`, `1`, `checked`, `yes`, `sí`, `si` or `on`
+     (the values the filler ticks), and a `1` option is a yes. A level word in a question with a yes (`Are you an expert in
+     Docker?`) needs the years of that level in the profile.
+   - Everyday screening questions must keep being answered. `tests/test_common_questions.py` holds about 140 English and
+     Spanish questions (age, availability, schedule, authorization, location, pay, how you heard, employment status,
+     education, English level, teamwork, consent, contact links, honest No answers) with the truthful answer for
+     `profile.example.yaml`; all must be accepted, and a sample of them is repeated in `evals/honesty.yaml`.
    - Word ratings: `Expert` for a skill needs 5 years in the profile, `Advanced` 3, `Intermediate` 1; and when the
      options form an ordered scale of three or more levels, anything above the middle one is rejected too.
      `More than 3 years` claims more than 3; `3+3` or two loose numbers in a years answer are rejected; a pay answer
@@ -410,7 +417,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 297 | 297 | 100% |
+| honesty | 336 | 336 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

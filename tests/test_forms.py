@@ -816,3 +816,22 @@ def test_number_field_about_a_skill_is_a_years_answer(tmp_path, monkeypatch):
     fake_llm(monkeypatch, {"answers": {"a": "8"}, "facts": {"a": ["skill.python"]}, "unknown": []})
     q = "How much Python experience do you have?"
     assert a.decide([field("a", q, "number")], OFFER) == ({}, [q])
+
+
+# --- round 15 ---------------------------------------------------------------------------------------------------------
+
+def test_checkbox_one_is_checked_as_a_yes(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    fake_llm(monkeypatch, {"answers": {"ap0": 1}, "unknown": []})
+    f = field("ap0", "I hold a PhD", "checkbox")
+    f["value"] = False
+    assert a.decide([f], OFFER) == ({}, ["I hold a PhD"])
+
+
+def test_expert_question_is_not_cached_when_rejected(tmp_path, monkeypatch):
+    facts = [{"id": "skill.sql", "kind": "skill", "name": "SQL", "years": 2}]
+    a = FormAssistant({**PROFILE, "facts": facts}, "name: Alex", tmp_path, "m", lambda *_: None)
+    fake_llm(monkeypatch, {"answers": {"a": "Yes"}, "unknown": []})
+    q = "Are you an expert in SQL?"
+    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])
+    assert a.cache == {}
