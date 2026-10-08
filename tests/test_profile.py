@@ -92,7 +92,7 @@ def test_duplicate_ids_including_bullets():
         {"id": "skill.python", "kind": "skill", "name": "Python"},
         {"id": "skill.python", "kind": "skill", "name": "Python again"},
         {"id": "exp.acme", "kind": "experience", "title": "Dev", "org": "Acme", "start": "2023-01", "end": "present",
-         "bullets": [{"id": "skill.python", "text": "x"}, {"id": "exp.acme.b1", "text": "y"}]},
+         "bullets": [{"id": "exp.acme", "text": "x"}, {"id": "exp.acme.b1", "text": "y"}]},
     ]
     messages = errors_for(facts=facts)
     assert sum("duplicate" in m for m in messages) == 2
@@ -139,3 +139,79 @@ def test_run_exits_2_and_prints_every_message_for_a_bad_profile(tmp_path, capsys
     assert exc.value.code == 2
     out = capsys.readouterr().out
     assert "newer jobagent" in out and "last_name" in out and "email" in out
+
+
+# --- slugs and ids --------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, expected", [
+    ("C", "c"), ("C++", "c-plus-plus"), ("C#", "c-sharp"), ("node.js", "node-js"), ("Café Ñandú", "cafe-nandu"),
+    ("  Spaced   Out ", "spaced-out"),
+])
+def test_slug(text, expected):
+    assert prof.slug(text) == expected
+
+
+def test_migrating_c_c_plus_plus_and_c_sharp_gives_distinct_ids_that_load():
+    data = prof.migrate({"first_name": "Alex", "last_name": "Example", "email": "alex@example.com",
+                         "years_of_experience": {"c": 2, "c++": 5, "c#": 3, "node.js": 1, "node_js": 2}})
+    ids = [f["id"] for f in data["facts"]]
+    assert len(set(ids)) == 5 and ids[:3] == ["skill.c", "skill.c-plus-plus", "skill.c-sharp"]
+    assert ids[3:] == ["skill.node-js", "skill.node-js-2"]
+    assert prof.validate(data) == []
+
+
+def test_migration_does_not_reuse_ids_of_existing_facts():
+    data = prof.migrate({"years_of_experience": {"python": 3, "go": 1},
+                         "facts": [{"id": "skill.python", "kind": "skill", "name": "Python (old)"}]})
+    ids = [f["id"] for f in data["facts"]]
+    assert ids == ["skill.python", "skill.python-2", "skill.go"]
+
+
+def test_names_without_ascii_letters_get_an_item_id():
+    data = prof.migrate({"years_of_experience": {"漢字": 1, "日本語": 2}})
+    assert [f["id"] for f in data["facts"]] == ["skill.item-1", "skill.item-2"]
+    assert prof.validate({**base(), "facts": data["facts"]}) == []
+
+
+# --- stricter validation --------------------------------------------------------------------------------
+
+SKILL = {"id": "skill.python", "kind": "skill", "name": "Python", "years": 3}
+
+
+@pytest.mark.parametrize("changes, expected", [
+    ({"version": 0}, "version"),
+    ({"version": -1}, "version"),
+    ({"version": "2"}, "version"),
+    ({"version": 2.5}, "version"),
+    ({"version": True}, "version"),
+    ({"email": "alex@example.com\n"}, "email"),
+    ({"facts": [{**SKILL, "id": "skill.python\n"}]}, "facts[0].id"),
+    ({"facts": [{"id": "exp.a", "kind": "experience", "title": "Dev", "org": "Acme", "start": "2020-01\n"}]},
+     "facts[0].start"),
+    ({"years_of_experience": {"python": 3}}, "years_of_experience"),
+    ({"facts": {}}, "facts must be a list"),
+    ({"facts": ""}, "facts must be a list"),
+    ({"facts": "skill.python"}, "facts must be a list"),
+    ({"facts": [{**SKILL, "id": "cert.python"}]}, "prefix"),
+    ({"facts": [{"id": "exp.a", "kind": "experience", "title": "Dev", "org": "Acme", "start": "2021-05",
+                 "end": "2020-01"}]}, "facts[0].end"),
+    ({"fixed_answers": [{"pattern": "([unclosed", "value": "x"}]}, "([unclosed"),
+    ({"fixed_answers": "nope"}, "fixed_answers"),
+    ({"expected_salary_usd_monthly": "lots"}, "expected_salary_usd_monthly"),
+    ({"expected_salary_usd_monthly": -5}, "expected_salary_usd_monthly"),
+])
+def test_stricter_validation(changes, expected):
+    messages = errors_for(**changes)
+    assert any(expected in m for m in messages), messages
+
+
+def test_valid_extras_still_pass():
+    facts = [{"id": "exp.a", "kind": "experience", "title": "Dev", "org": "Acme", "start": "2020-01", "end": "2020-01",
+              "bullets": [{"id": "exp.a.b1", "text": "x"}]}]
+    assert errors_for(facts=facts, expected_salary_usd_monthly=1800,
+                      fixed_answers=[{"pattern": "e-?mail", "value": "a@b.co"}]) == []
+    assert errors_for(facts=None) == []
+
+
+def test_v1_with_years_of_experience_still_loads_through_migration(tmp_path):
+    assert prof.validate(prof.load_profile(V1)) == []

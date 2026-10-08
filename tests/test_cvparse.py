@@ -233,7 +233,7 @@ def test_c_plus_plus_and_c_sharp_are_not_c(monkeypatch):
     facts = facts_for(monkeypatch, text, [
         {"kind": "skill", "name": "C++", "years": 4, "source": "C++ (4 years)"},
         {"kind": "skill", "name": "C#", "years": 2, "source": "C# (2 years)"}])
-    assert [f["name"] for f in facts] == ["C++", "C#"] and len({f["id"] for f in facts}) == 2
+    assert [f["id"] for f in facts] == ["skill.c-plus-plus", "skill.c-sharp"]
 
 
 def test_quote_longer_than_300_chars_is_cut(cv_text, monkeypatch):

@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from jobagent import llm
-from jobagent.profile import ID_PREFIX, SCHEMA_VERSION, fact_errors, slug
+from jobagent.profile import ID_PREFIX, SCHEMA_VERSION, fact_errors, new_id
 from jobagent.safety import is_sensitive, looks_injected
 
 MISSING = "Reading {} files needs the cv extra: pip install 'jobagent[cv]'"
@@ -197,10 +197,7 @@ def _fact(raw, haystack, used, log):
             else:
                 log(f"unverified: {key} of {fact[MAIN[kind][0]]!r} is not in its quote, left out")
     seed = f"{fact.get('org', '')}-{str(fact.get('start', ''))[:4]}" if kind == "experience" else fact["name"]
-    base, n = f"{ID_PREFIX[kind]}.{slug(seed)}", 2
-    fact = {"id": base, **fact}
-    while fact["id"] in used:
-        fact["id"], n = f"{base}-{n}", n + 1
+    fact = {"id": new_id(ID_PREFIX[kind], seed, used), **fact}
     bullets = []
     for b in raw.get("bullets") if kind == "experience" and isinstance(raw.get("bullets"), list) else []:
         source = b.get("source") if isinstance(b, dict) else None

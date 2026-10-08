@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from jobagent.profile import EMAIL, ID_PREFIX, SCHEMA_VERSION, is_date, is_number, migrate, slug, validate
+from jobagent.profile import EMAIL, ID_PREFIX, SCHEMA_VERSION, is_date, is_number, migrate, new_id, validate
 
 YES = ("y", "yes")
 CLEAR = "-"  # typed on a draft item or optional field: remove it
@@ -29,7 +29,7 @@ def _text(raw):
 
 
 def _email(raw):
-    if not EMAIL.match(raw):
+    if not EMAIL.fullmatch(raw):
         raise ValueError("an email looks like name@example.com")
     return raw
 
@@ -91,12 +91,10 @@ class _Asker:
             except ValueError as e:
                 self.out(f"{label}: {e}")
 
-    def new_id(self, base):
-        candidate, n = base, 2
-        while candidate in self.used:
-            candidate, n = f"{base}-{n}", n + 1
-        self.used.add(candidate)
-        return candidate
+    def new_id(self, kind, seed):
+        fact_id = new_id(ID_PREFIX[kind], seed, self.used)
+        self.used.add(fact_id)
+        return fact_id
 
     def bullets(self, fact_id, drafts):
         out = []
@@ -150,7 +148,7 @@ def _collect(a, kind, drafts):
                 fact[key] = value
         if not fact["id"]:
             seed = f"{fact['org']}-{str(fact['start'])[:4]}" if kind == "experience" else name
-            fact["id"] = a.new_id(f"{ID_PREFIX[kind]}.{slug(seed)}")
+            fact["id"] = a.new_id(kind, seed)
         if kind == "experience":
             fact["bullets"] = a.bullets(fact["id"], draft.get("bullets") or [])
         out.append(fact)
