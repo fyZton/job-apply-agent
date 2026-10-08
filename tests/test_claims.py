@@ -1,4 +1,6 @@
 """jobagent.claims fails closed: an answer other than No / 0 / None needs a profile fact behind every thing it names."""
+import datetime
+
 import pytest
 
 from jobagent.claims import Claims
@@ -19,6 +21,7 @@ CERT = {"id": "cert.aws", "kind": "cert", "name": "AWS Cloud Practitioner", "yea
 PROFILE = {"country": "Venezuela", "city": "Caracas", "first_name": "Alex", "facts": BASE}
 WITH_CERT = {**PROFILE, "facts": BASE + [CERT]}
 YN = ["Yes", "No"]
+YEAR = datetime.date.today().year
 
 
 def verdict(question, value, type_="radio", options=None, profile=PROFILE):
@@ -261,7 +264,7 @@ R7_ACCEPT = [
     ("number", "English proficiency (1-10)", "7", None, ""),
     ("number", "Python skill level (1-10)", "5", None, ""),
     ("select", "Python skill level (1-10)", "4", [str(i) for i in range(1, 11)], ""),
-    ("textarea", "Anything else?", "3 years (since 2015) of Python", None, ""),
+    ("textarea", "Anything else?", f"3 years (since {YEAR - 3}) of Python", None, ""),
     ("number", "Years of experience in software engineering", "3", None, ""),
     ("number", "What is your net salary expectation?", "1500", None, ""),
 ]
@@ -336,7 +339,6 @@ def test_round8_accepts(type_, question, value, options):
 
 # --- round 9 ---------------------------------------------------------------------------------------------------------
 
-YEAR = __import__("datetime").date.today().year
 
 R9_REJECT = [
     ("textarea", "Describe your experience with Kubernetes", "I have used Kubernetes in production daily at Acme."),
@@ -612,3 +614,67 @@ R12_ACCEPT = [
 def test_round12_accepts(type_, question, value, profile):
     options = EDU_OPTS if question == "Highest degree obtained" else None
     assert verdict_q(question, value, type_, options, profile=profile)
+
+
+# --- round 13: coarse fail-closed rules ---------------------------------------------------------------------------
+
+R13_REJECT = [
+    ("radio", "Do you have 5 or more years of Python experience?", "Yes"),
+    ("radio", "¿Tienes 5 o más años de experiencia con Python?", "Sí"),
+    ("radio", "Do you have 4 or more years of professional software development experience?", "Yes"),
+    ("radio", "Do you have a minimum of 5 years of Python?", "Yes"),
+    ("number", "How much Python experience do you have?", "8"),
+    ("number", "Python experience", "5"),
+    ("textarea", "Tell us about yourself", "SQL 9 years"),
+    ("textarea", "Tell us about yourself", "Python 3 years, SQL 9 years"),
+    ("textarea", "Tell us about yourself", "I have 3 years of Python and 9 of SQL."),
+    ("textarea", "Tell us about yourself", "12 years writing Python professionally."),
+    ("textarea", "Tell us about yourself", "I bring 12 years building Python services."),
+    ("textarea", "Tell us about yourself", "I have 12 years in the industry."),
+    ("textarea", "Tell us about yourself", "A 12-year career in Python."),
+    ("textarea", "Tell us about yourself", "I have twelve-plus years of Python."),
+    ("textarea", "Tell us about yourself", "I have a dozen years of Python."),
+    ("textarea", "Tell us about yourself", "I have programmed Python for more than ten years."),
+    ("textarea", "Describe your Python experience", "Since 2015"),
+    ("textarea", "Anything else?", "I have been writing Python since 2012"),
+    ("textarea", "Tell us about yourself", "I have many years of Python."),
+    ("textarea", "Tell us about yourself", "I have several years of SQL."),
+    ("textarea", "Tell us about yourself", "I have a score of years of SQL."),
+    ("textarea", "Tell us about yourself", "Tengo muchos años de Python."),
+    ("textarea", "Tell us about yourself", "Tengo una docena de años de Python."),
+    ("textarea", "Anything else?", "I ran a team of 12."),
+    ("textarea", "Anything else?", "I ran a team of 10"),
+    ("textarea", "Anything else?", "I hired and grew a team."),
+    ("textarea", "Anything else?", "I was responsible for a squad of eight people."),
+    ("textarea", "Anything else?", "I hired and onboarded 6 people."),
+    ("radio", "Is English your first language?", "Yes"),
+    ("textarea", "Anything else?", "Temporal workflows are my specialty."),
+    ("textarea", "Anything else?", "English is my first language."),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R13_REJECT)
+def test_round13_rejects(type_, question, value):
+    assert not verdict_q(question, value, type_)
+
+
+R13_ACCEPT = [
+    ("radio", "Do you have a minimum of 3 years of Python?", "Yes"),
+    ("number", "How much Python experience do you have?", "3"),
+    ("textarea", "Tell us about yourself", "Python 3 years, SQL 2 years"),
+    ("textarea", "Tell us about yourself", "I have 3 years of professional experience."),
+    ("textarea", "Tell us about yourself", f"3 years (since {YEAR - 3})"),
+    ("radio", "Is Spanish your first language?", "Yes"),
+    ("textarea", "Anything else?", "Currently I work with Python."),
+    ("textarea", "Anything else?", "I have 2 years of SQL and 3 years of Python."),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R13_ACCEPT)
+def test_round13_accepts(type_, question, value):
+    assert verdict_q(question, value, type_)
+
+
+def test_round13_management_is_backed_by_a_managing_verb_whatever_the_verb():
+    for value in ("I ran a team of 12.", "I hired and grew a team.", "I hired and onboarded 6 people."):
+        assert verdict_q("Anything else?", value, "textarea", profile=MGMT)

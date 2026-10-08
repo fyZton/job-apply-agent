@@ -55,6 +55,7 @@ horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annua
 engineering ingenieria processing process data application applications
 highest education educacion university universidad universitario universitaria completed educativo academic
 academico estudios titulo level
+minimum maximum least
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently legally receive calls call require requires now future
 first last middle given family maiden
@@ -443,6 +444,8 @@ ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|doctoral|doctor of philosoph
                      r"m\.sc|ms|m\.s|bachelors?|licenciatura|"
                      r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree|degree|undergraduate|"
                      r"college degree|graduated|graduate of|titulo|carrera|ingenieria en|ingeniero en)\b")
+NATIVE_CUE = re.compile(r"\b(?:first language|mother tongue|native language|lengua materna|idioma nativo|"
+                        r"native speaker|idioma materno|lengua nativa|primer idioma|primera lengua)\b")
 BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speaker|proficiency)|\bnivel nativo|"
                        r"\bnative proficiency|\bfull proficiency")
 # A clause that starts with a negation says nothing about the profile ("No", "I have not used X yet"); "not just X",
@@ -483,6 +486,16 @@ TEAM = re.compile(r"\b(managed|managing|manage|handled|handling|led|leading|lead
                   + "|".join(_NUMW)
                   + r"|teams?|people|others|employees?|members|direct reports|engineers|developers|equipos?|personas|"
                   r"empleados|colaboradores|staff|interns|juniors|reports)\b")
+HUMANS = (r"(?:teams?|squads?|people|persons|engineers|developers|reports|direct reports|staff|employees|members|"
+          r"juniors|interns|equipos?|personas|empleados)")
+COUNT = r"(?:\d+|" + "|".join(_NUMW) + r"|dozen|docena)"
+MGMT_ANS = (
+    re.compile(rf"\b{HUMANS}\s+of\s+{COUNT}\b"),
+    re.compile(rf"\b{COUNT}\s+{HUMANS}\b"),
+    re.compile(rf"\b(?:responsible for|in charge of|a cargo de|responsable de)\s+(?:a |the |an )?{HUMANS}\b"),
+    re.compile(rf"\b(?:hired|grew|built|ran|run|headed|oversaw|oversee|onboarded|recruited|fired)\b"
+               rf"[^.;!?]{{0,25}}?\b{HUMANS}\b"),
+)
 MANAGING = re.compile(r"manag\w*|led|lead\w*|supervis\w*|mentor\w*|coordin\w*|direct\w*|lider\w*|dirig\w*|gestion\w*")
 MGMT_VERB = (r"(?:manag\w*|handl\w*|led|lead(?:ing)?|supervis\w*|mentor\w*|coordinat\w*|direct(?:ed|ing)|lider\w*|"
              r"gestion\w*|dirig\w*)")
@@ -491,6 +504,10 @@ MGMT_OBJ = (r"(?:teams?|people|others|employees?|members|direct reports|engineer
 MGMT_Q = re.compile(r"\b" + MGMT_VERB + r"\b[^.?!;]{0,30}?\b" + MGMT_OBJ + r"\b|"
                     r"\bexperience (?:in )?(?:managing|leading|supervising)\b|\bpeople management\b|"
                     r"\bteam management\b")
+PREP_LIST = [[w] for w in ("of", "in", "with", "using", "de", "en", "con", "on", "for")]
+TIMEW = {"year", "years", "yr", "yrs", "ano", "anos", "decade", "decades", "decada", "decadas", "career", "carrera"}
+UNREADABLE = set("""score many several plenty countless multiple numerous muchos muchas varios varias couple few
+some lots""".split())
 SINCE_YEAR = re.compile(r"\b(?:since|desde)\s+((?:19|20)\d\d)\b")
 DOING = re.compile(r"cod(?:e|ing)|program\w*|develop\w*|software|engineer\w*|work(?:ed|ing)|using|used|experience|"
                    r"experiencia|trabaj\w*|desarroll\w*|usando|building|built")
@@ -538,6 +555,26 @@ def known_tech(raw):
     return out
 
 
+OPENERS = set("""
+i im ive id my me we our us the a an in at on of to for from with without by as and but or so if then than this that
+these those there here it its you your he she they his her their one two three some many most all each every both any
+other another such more less few several first second third last next today now currently previously recently lately
+usually often always never sometimes still just only mainly mostly overall generally basically honestly personally
+professionally additionally moreover furthermore however therefore finally lastly besides instead meanwhile also yes
+no yeah ok okay sure absolutely definitely certainly thanks thank hello hi dear regards best kind sincerely please well
+really very quite rather although though because since while when where what who why how after before during until
+once let like love enjoy am are is was were be been being have has had do does did will would can could should may
+might must built developed designed implemented created led managed worked wrote automated maintained delivered
+improved reduced increased launched deployed integrated migrated tested documented supported collaborated
+contributed responsible experienced skilled passionate motivated eager looking interested open available ready able
+proud happy excited fluent native bilingual hola gracias yo tu el la los las un una unos unas es son soy estoy
+estamos tengo tenemos he hemos mi mis nuestro nuestra en durante actualmente anteriormente desde hasta por para con
+sin sobre entre ademas tambien ya aun todavia mas menos muy mucho muchos pero porque cuando donde como que quien si
+buen buena buenas buenos saludos atentamente claro trabajo trabaje trabajo desarrollo desarrolle disene cree
+participe soy fui he sido llevo cuento tuve
+""".split())
+
+
 def _tech_like(word, start, after, names=True):
     """The word of a free-text answer looks like a technology or proper name: letters with digits or + # .,
     CamelCase, ALL-CAPS, or a capitalised word that does not just start a sentence."""
@@ -551,7 +588,7 @@ def _tech_like(word, start, after, names=True):
     if names and (re.search(r"[a-z][A-Z]", word) or len(word) >= 2 and word.isupper()):
         return True  # CamelCase and ALL-CAPS: a place or a job board ("LinkedIn", "LATAM") answers a place question
     if names and word[0].isupper() and f not in STOP and f not in LANGS:
-        return not start or SENTENCE_START.match(after) is not None
+        return not start or f not in OPENERS
     return False
 
 
@@ -665,9 +702,31 @@ class Claims:
                 and not (LANG_RX.search(q) or EDU_Q.search(q) or CERT_Q.search(q) or PURE_CERT.search(q)
                          or known_tech(q)))
 
-    def years_q(self, text):
+    def years_q(self, text, ftype=None):
+        """The question asks for years: a years word, or (in a number field) a skill or experience word with no
+        rating scale ("Python experience")."""
         t = fold(text)
-        return bool(YEARS_Q.search(t)) and not self._topic(t)
+        if self._topic(t):
+            return False
+        if YEARS_Q.search(t):
+            return True
+        return (ftype == "number" and not RATING_Q.search(t) and scale_of(t, ()) is None
+                and bool(EXP_WORDS.search(t) or self.resolve(groups(LANG_RX.sub(" ", t)))[0]))
+
+    def _asked(self, text, t, years_q):
+        """The years a question asks for. With a skill, experience or years in it, any number is a threshold
+        ("5 or more", "minimum of 5", "5 o más", "with 5 years"); ratings, ages, dates and "Python 3" are not."""
+        thr = threshold(text)
+        if thr is not None or not (years_q or EXP_WORDS.search(t) or groups(LANG_RX.sub(" ", t))):
+            return thr
+        rest = OUT_OF.sub(" ", SCALE_RX.sub(" ", AGE.sub(" ", t)))
+        nums = []
+        for m in re.finditer(r"(?<![\w.])(\d+(?:[.,]\d+)?)\+?(?!\w)", rest):
+            n = float(m.group(1).replace(",", "."))
+            prev = re.search(r"([a-z0-9+#.]+)\s*$", rest[:m.start()])
+            if n < 1900 and not (prev and self._skill([prev.group(1)])):
+                nums.append(n)
+        return max(nums, default=None)
 
     def named(self, text):
         """The profile skills a question names."""
@@ -730,7 +789,7 @@ class Claims:
             if (BILINGUAL.search(t) or BILINGUAL.search(v)) and sum(r >= 6 for r in self.langs.values()) < 2:
                 return "claims to be bilingual, which the profile's languages do not back"
             return ""
-        level = max(rank(t), 1) if kind == "yes" else rank(v)
+        level = max(rank(t), 6 if NATIVE_CUE.search(t) else 1) if kind == "yes" else rank(v)
         if kind is None and not level and not YEARS_Q.search(t) and (num := rating_of(v)):
             n, top = num
             scale = (0.0, top) if top else scale_of(t, opts)
@@ -791,18 +850,21 @@ class Claims:
         months_q, ftype = bool(MONTHS.search(t)), field["type"]
         rating = None if years_q or LANG_RX.search(t) or not RATING_Q.search(t) else rating_of(v)
         years, exists = None, False
+        thr = self._asked(text, t, years_q)
         if ftype == "number":
             if not PLAIN_NUMBER.fullmatch(v.strip()):
                 return f"{str(v)[:30]!r} is not a plain number"
             n = float(v.replace(",", "."))
-            exists, years = n > 0, (n / 12 if months_q else n) if years_q and n > 0 else None
+            as_years = years_q or (rating is None and not RATING_Q.search(t) and scale_of(t, opts) is None
+                                   and bool(EXP_WORDS.search(t) or self.resolve(runs)[0]))
+            exists, years = n > 0, (n / 12 if months_q else n) if as_years and n > 0 else None
         elif opts or ftype == "checkbox":
             reads_years = opts and not rating and (years_q or not LANG_RX.search(t))
             own = years_in(v, months_q, low=True) if reads_years else None
             if own is not None:
                 exists, years = own > 0 or kind == "yes", own or None
             elif kind in ("yes", None):
-                exists, years = True, threshold(text)
+                exists, years = True, thr
         else:
             if years_q and (ARITH.search(v) or not UNIT_RX.search(v) and len(PLAIN_NUMBER.findall(NO_RANGE.sub(
                     " ", SINCE.sub(" ", v)))) > 1):
@@ -814,7 +876,7 @@ class Claims:
             if n is not None:
                 exists, years = n > 0, n or None
             elif kind == "yes":
-                exists, years = True, threshold(text)
+                exists, years = True, thr
             elif kind is None:
                 if years_q:
                     return "the answer has no number of years to check"
@@ -870,7 +932,7 @@ class Claims:
                 return f"the answer names the role {tok!r}, which is not in the profile"
         if re.search(r"\bhead of\b", v) and "head" not in self.known:
             return "the answer names the role 'head', which is not in the profile"
-        if TEAM.search(v) and not self._manages():
+        if (TEAM.search(v) or any(rx.search(v) for rx in MGMT_ANS)) and not self._manages():
             return "the answer claims to have managed or led people, which the profile does not back"
         for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])
@@ -882,7 +944,8 @@ class Claims:
                 return f"the answer claims experience with {' '.join(left)!r}, which is not in the profile"
             if why := self._years_within(matched, years):
                 return "the answer " + why
-        return self._answer_levels(v) or self._answer_since(v) or (self._answer_credentials(v) if self.facts else "")
+        return (self._answer_levels(v) or self._answer_quantities(v, t)
+                or (self._answer_credentials(v) if self.facts else ""))
 
     def _answer_levels(self, v):
         """"Expert in Python": a level word next to a profile skill needs the years of that level."""
@@ -900,18 +963,65 @@ class Claims:
                         return f"the answer rates {hit[0]} above the {hit[1]:g} years the profile has"
         return ""
 
-    def _answer_since(self, v):
-        """"I have been coding since 1999" is 27 years, unless the answer also says how long."""
-        if YEARS_RX.search(v):
-            return ""
+    def _qty(self, tok):
+        """The number a token says: 12, twelve, 12+, twelve-plus, dozen; None if it is not one."""
+        tok = tok.removesuffix("-plus").removesuffix("+")
+        if re.fullmatch(r"\d+(?:\.\d+)?", tok):
+            return float(tok) if float(tok) < 1900 else None  # a calendar year is not a count
+        return 12.0 if tok in ("dozen", "docena") else float(_NUMW[tok]) if tok in _NUMW else None
+
+    def _answer_quantities(self, v, t):
+        """Every quantity next to a time word ("9 years", "12-year career", "9 of SQL", "more than ten years") or
+        "since YYYY" is years of experience: tied to the nearest profile skill in its clause, or capped by the best
+        skill when there is none. A quantity that cannot be read ("several", "a score of") is rejected."""
+        now = datetime.date.today().year
+        asked = self.resolve(groups(LANG_RX.sub(" ", t)))[0]
         for clause in re.split(r"[.;!?\n]", v):
-            m = SINCE_YEAR.search(clause)
-            if not m or not DOING.search(clause):
-                continue
-            years = datetime.date.today().year - int(m.group(1))
-            matched, _ = self.resolve(groups(clause))
-            if why := self._years_within(matched, years):
-                return "the answer " + why
+            toks = TOKEN_OR_COMMA.findall(clause)
+            skills, i = [], 0
+            while i < len(toks):
+                for j in range(min(len(toks), i + 4), i, -1):
+                    if "," not in toks[i:j] and (hit := self._skill(toks[i:j])):
+                        skills.append((i, *hit))
+                        i = j - 1
+                        break
+                i += 1
+            quants = []
+            for i, tok in enumerate(toks):
+                if m := re.fullmatch(r"(\d+(?:\.\d+)?)-years?", tok):
+                    quants.append((i, float(m.group(1)), i))
+                elif tok in TIMEW:
+                    k, val = i - 1, None
+                    while k >= max(i - 4, 0) and toks[k] != ",":
+                        if (val := self._qty(toks[k])) is not None:
+                            break
+                        if toks[k] in UNREADABLE:
+                            return f"the answer counts years with {toks[k]!r}, which cannot be read"
+                        k -= 1
+                    if val is not None:
+                        if toks[max(k - 2, 0):k] == ["more", "than"] or toks[k - 1:k] in (["over"], ["above"]):
+                            val += 1
+                        quants.append((k, val, i))
+                elif (val := self._qty(tok)) is not None and toks[i + 1:i + 2] == ["of"] and any(
+                        x in TIMEW for x in toks):
+                    quants.append((i, val, i + 1))  # "3 years of Python and 9 of SQL"
+            for m in SINCE_YEAR.finditer(clause):
+                at = len(TOKEN_OR_COMMA.findall(clause[:m.start()]))
+                if skills or asked and clause.strip() == m.group().strip() or DOING.search(clause):
+                    quants.append((at, float(now - int(m.group(1))), at))
+            for pos, val, ti in quants:
+                if skills:
+                    # "3 years of Python": the skill after the time word and "of"; else the nearest one
+                    after = [x for x in skills if 0 < x[0] - ti <= 3 and toks[ti + 1:ti + 2] in PREP_LIST]
+                    _, name, have = after[0] if after else min(skills, key=lambda x: abs(x[0] - pos))
+                    if val > have:
+                        return f"the answer claims {val:g} years of {name}, above the profile's {have:g}"
+                elif asked and clause.strip().startswith(("since", "desde")):
+                    for name, have in asked.items():
+                        if val > have:
+                            return f"the answer claims {val:g} years of {name}, above the profile's {have:g}"
+                elif val > self.best:
+                    return f"the answer claims {val:g} years, above the profile's best skill ({self.best:g})"
         return ""
 
     def _answer_credentials(self, v):
@@ -919,7 +1029,7 @@ class Claims:
         for i, tok in enumerate(toks):
             if tok not in LANGS:
                 continue
-            lang, level = LANGS[tok], 0
+            lang, level = LANGS[tok], 6 if NATIVE_CUE.search(v) else 0
             for j in range(i - 1, max(i - 4, -1), -1):  # words before, up to a comma or another language
                 if toks[j] == "," or toks[j] in LANGS:
                     break

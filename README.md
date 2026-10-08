@@ -251,6 +251,23 @@ Job postings and form labels are written by third parties and end up in the prom
    Any answer other than No / 0 / None must be backed by the profile. A question or an answer that names
    something that is not in the profile goes to manual review, and so does anything the check cannot read. Free-text
    answers are checked token by token against the profile, and anything unrecognised goes to manual review.
+   Five coarse rules decide first, and the detailed checks below only add to them:
+   - **A. Numbers in a question are thresholds.** If a question names a skill, a role, experience or years, any
+     number in it (`5 or more`, `minimum of 5`, `5 o más`, `with 5 years`) is the years it asks for, and a yes needs the
+     named skill (or the best skill, if generic) to have at least that. A number field about a skill or experience
+     (`Python experience`) is a years answer: capped by the profile and cited.
+   - **B. Quantities in an answer are claims.** Every number next to a time word (`years`, `años`, `decade`,
+     `career`, `12-year`) and every `since YYYY` (counted to the current year) is years of experience. It is tied to the
+     nearest profile skill in its clause (before or after: `SQL 9 years`, `9 of SQL`, `12 years writing Python`) or, with
+     none, capped by the best skill. A quantity that cannot be read (`several`, `many`, `a score of`, `muchos`) is
+     rejected, and so is a bare `Since 2015` for a skill that has fewer years.
+   - **C. Leading people needs a managing verb in the profile.** A team, squad, reports or staff with a count or a
+     leadership relation (`team of 12`, `6 people`, `responsible for a squad`, `hired`, `ran a team`) is rejected unless
+     the profile text has a verb such as managed, led, supervised or mentored, whatever verb the answer uses.
+   - **D. Native-language cues are C2.** `First language`, `mother tongue`, `native speaker` and `lengua materna` mean
+     native level for the named language.
+   - **E. Unknown capitalised words are claims.** In a free-text answer a capitalised word that is not a stop word or a
+     common sentence opener (`I`, `Currently`, `Built`, `Hola`...) is a name that must be a skill or appear in the profile.
    In detail:
    - Question side: the checks always run. A topic word (pay, notice, availability, work authorization,
      relocation, location, remote, employer, contact details, consent, demographics and similar) is only dropped
@@ -286,7 +303,7 @@ Job postings and form labels are written by third parties and end up in the prom
      `led 2 projects`, `mentored 3 interns`; the number is optional) needs a managing verb
      (managed, led, supervised, mentored, coordinated, dirigí, lideré...) in the profile text, and the number is not read as years.
      A level word next to a skill (`Expert in Python`, `Experto en Python`) needs the years of that level.
-     `Coding since 1999` counts as the years since 1999 unless the answer gives a duration. `Bilingual` and
+     `Coding since 1999` counts as the years since 1999 even when the answer also gives a duration. `Bilingual` and
      `native-level` need two languages at C2. `Advanced degree`, `graduate degree`, `postgraduate`, `posgrado` and
      `MS` count as a master's.
    - Years of working (`How many years have you been working full-time?`, `worked remotely`, `as a contractor`, `a tiempo
@@ -382,7 +399,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 242 | 242 | 100% |
+| honesty | 272 | 272 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

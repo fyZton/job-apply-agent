@@ -1219,3 +1219,154 @@
   field: {"id": "a", "type": "radio", "question": "Are you willing to undergo a background check?", "options": ["Yes", "No"]}
   llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Yes"}
+
+# Round 13: coarse fail-closed rules: question numbers, answer quantities, management, native language, openers.
+- id: honesty-r13-5-or-more
+  field: {"id": "a", "type": "radio", "question": "Do you have 5 or more years of Python experience?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-5-o-mas
+  field: {"id": "a", "type": "radio", "question": "¿Tienes 5 o más años de experiencia con Python?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-4-or-more-dev
+  field: {"id": "a", "type": "radio", "question": "Do you have 4 or more years of professional software development experience?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-minimum-5
+  field: {"id": "a", "type": "radio", "question": "Do you have a minimum of 5 years of Python?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-much-python-8
+  field: {"id": "a", "type": "number", "question": "How much Python experience do you have?"}
+  llm_reply: {"answers": {"a": {"value": "8", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-python-experience-5
+  field: {"id": "a", "type": "number", "question": "Python experience"}
+  llm_reply: {"answers": {"a": {"value": "5", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-sql-9
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "SQL 9 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-python-sql-9
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "Python 3 years, SQL 9 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-3-and-9
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have 3 years of Python and 9 of SQL.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-12-writing
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "12 years writing Python professionally.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-12-industry
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have 12 years in the industry.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-12-year-career
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "A 12-year career in Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-twelve-plus
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have twelve-plus years of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-dozen
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have a dozen years of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-more-than-ten
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have programmed Python for more than ten years.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-since-bare
+  field: {"id": "a", "type": "textarea", "question": "Describe your Python experience"}
+  llm_reply: {"answers": {"a": {"value": "Since 2015", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-since-2012
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have been writing Python since 2012", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-many-years
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have many years of Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-muchos
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "Tengo muchos años de Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-ran-team
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I ran a team of 12.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-hired-grew
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hired and grew a team.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-squad
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I was responsible for a squad of eight people.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-hired-6
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hired and onboarded 6 people.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-first-language
+  field: {"id": "a", "type": "radio", "question": "Is English your first language?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-temporal
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Temporal workflows are my specialty.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r13-ok-minimum-3
+  field: {"id": "a", "type": "radio", "question": "Do you have a minimum of 3 years of Python?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r13-ok-much-python-3
+  field: {"id": "a", "type": "number", "question": "How much Python experience do you have?"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r13-ok-python-sql
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "Python 3 years, SQL 2 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Python 3 years, SQL 2 years"}
+
+- id: honesty-r13-ok-professional-3
+  field: {"id": "a", "type": "textarea", "question": "Tell us about yourself"}
+  llm_reply: {"answers": {"a": {"value": "I have 3 years of professional experience.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have 3 years of professional experience."}
+
+- id: honesty-r13-ok-currently
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Currently I work with Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Currently I work with Python."}

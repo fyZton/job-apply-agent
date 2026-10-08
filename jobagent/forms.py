@@ -222,7 +222,7 @@ class FormAssistant:
             self.log(f"answer for {field['question'][:60]!r} cites unknown facts {unknown}; not used")
             return False
         text = f'{field.get("context", "")} {field["question"]}'
-        if field["type"] not in ("number", "text", "textarea") or not self.claims.years_q(text):
+        if field["type"] not in ("number", "text", "textarea") or not self.claims.years_q(text, field["type"]):
             return True
         years = self.claims.stated_years(text, value)
         if years == 0:

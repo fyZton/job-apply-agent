@@ -796,3 +796,23 @@ def test_years_of_working_full_time_are_capped_and_not_cached(tmp_path, monkeypa
     assert a.cache == {}
     fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.python"]}, "unknown": []})
     assert a.decide([field("a", q, "number")], OFFER)[0] == {"a": "3"}
+
+
+# --- round 13 ---------------------------------------------------------------------------------------------------------
+
+def test_quantities_and_teams_in_free_text_go_to_manual_review(tmp_path, monkeypatch):
+    facts = [{"id": "skill.python", "kind": "skill", "name": "Python", "years": 3},
+             {"id": "skill.sql", "kind": "skill", "name": "SQL", "years": 2}]
+    a = FormAssistant({**PROFILE, "facts": facts}, "name: Alex", tmp_path, "m", lambda *_: None)
+    fake_llm(monkeypatch, {"answers": {"ap0": "SQL 9 years, Python 3 years. I have 12 years in the industry.",
+                                       "ap1": "I ran a team of 12 at Acme."}, "unknown": []})
+    fields = [field("ap0", "Tell us about yourself", "textarea"), field("ap1", "Anything else?", "textarea")]
+    answers, missing = a.decide(fields, OFFER)
+    assert answers == {} and missing == ["Tell us about yourself", "Anything else?"]
+
+
+def test_number_field_about_a_skill_is_a_years_answer(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    fake_llm(monkeypatch, {"answers": {"a": "8"}, "facts": {"a": ["skill.python"]}, "unknown": []})
+    q = "How much Python experience do you have?"
+    assert a.decide([field("a", q, "number")], OFFER) == ({}, [q])
