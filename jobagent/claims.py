@@ -53,6 +53,8 @@ implementar gestionado construido cuenta cuentas hecho haces hacer
 here upper alto working limited zone hear heard hire hiring letter cover date start inicio fecha check sitio web hora
 horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annual yearly net gross mensual anual
 engineering ingenieria processing process data application applications
+highest education educacion university universidad universitario universitaria completed educativo academic
+academico estudios titulo level
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently legally receive calls call require requires now future
 first last middle given family maiden
@@ -69,6 +71,8 @@ australia zealand africa israel turkey russia ukraine eu uk
 """.split())
 
 LANGS = {
+    "francais": "fr", "deutsch": "de", "nederlands": "nl", "polski": "pl", "svenska": "sv", "russkiy": "ru",
+    "русский": "ru",
     "english": "en", "ingles": "en", "spanish": "es", "espanol": "es", "castellano": "es", "german": "de",
     "aleman": "de", "french": "fr", "frances": "fr", "portuguese": "pt", "portugues": "pt", "italian": "it",
     "italiano": "it", "chinese": "zh", "mandarin": "zh", "chino": "zh", "japanese": "ja", "japones": "ja",
@@ -406,11 +410,30 @@ ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|masters?|maestria|mba|msc|m\
                      r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree)\b")
 BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speaker|proficiency)|\bnivel nativo|"
                        r"\bnative proficiency|\bfull proficiency")
-NEGATED = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos)\s+)?"
-                     r"(?:not|never|nunca|no|havent|dont|didnt)\b")
-BUT = re.compile(r"\b(?:but|pero|however|although|aunque|except|excepto)\b")
-TEAM = re.compile(r"\b(?:managed|managing|led|leading|supervised|mentored|directed|lider\w*|dirig\w*|gestion\w*)\b"
+# A clause that starts with a negation says nothing about the profile ("No", "I have not used X yet"); "not just X",
+# "no one" and "no other" do not negate. Clauses end at . ; ! ? : , " - " and "but".
+NEG_CLAUSE = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos|ha)\s+)?"
+                        r"(?:not|never|nunca|no|havent|dont|didnt|nope|none|ninguno|ninguna|nada|false|0|n/a)\b"
+                        r"(?!\s*(?:only|just|solo|solamente|one\b|other|body))")
+CLAUSES = re.compile(r"[.;!?:\n]+|,\s|\s[-\u2013\u2014]\s|\b(?:but|pero|however|although|aunque)\b", re.I)
+
+
+FILLER = re.compile(r"(?:thanks|thank you|gracias|sorry|please|yet|todavia|aun|really|at all|for now|por ahora)\W*")
+
+
+def positive(raw):
+    """The answer without its negated clauses: "" if all of it is negated, `raw` itself if none is."""
+    clauses = [c for c in CLAUSES.split(raw) if c and c.strip()]
+    keep = [c for c in clauses if not NEG_CLAUSE.match(fold(c)) and not FILLER.fullmatch(fold(c).strip())]
+    if len(keep) == len(clauses):
+        return raw
+    return ". ".join(c.strip() for c in keep)
+
+
+TEAM = re.compile(r"\b(managed|managing|led|leading|supervised|mentored|directed|coordinat\w*|lider\w*|dirig\w*|"
+                  r"gestion\w*|coordin\w*)\b"
                   r"[^.;!?]{0,25}?\b(?:\d+|" + "|".join(_NUMW) + r")\b")
+MANAGING = re.compile(r"manag\w*|led|lead\w*|supervis\w*|mentor\w*|coordin\w*|direct\w*|lider\w*|dirig\w*|gestion\w*")
 SINCE_YEAR = re.compile(r"\b(?:since|desde)\s+((?:19|20)\d\d)\b")
 DOING = re.compile(r"cod(?:e|ing)|program\w*|develop\w*|software|engineer\w*|work(?:ed|ing)|using|used|experience|"
                    r"experiencia|trabaj\w*|desarroll\w*|usando|building|built")
@@ -601,14 +624,15 @@ class Claims:
         certificate or language the profile lacks."""
         if not self.enabled:
             return True, ""
+        if fold(value).strip() in self.links:
+            return True, ""
+        value = positive(str(value))  # what is left once the negated clauses are out
+        if not value.strip():
+            return True, ""  # a bare "No" claims nothing
         t, v = fold(text), spell(fold(value))
         kind = answer_kind(v)
         why = ""
-        if v.strip() in self.links:
-            return True, ""
         free = field["type"] in ("text", "textarea")
-        if free and not fixed and NEGATED.match(v) and not BUT.search(v) and not re.search(r"\d", v):
-            return True, ""  # "I have not used Kubernetes yet." claims nothing
         if fixed:  # the rule answers its label; a legend that claims experience is still checked
             legend = field.get("context") or ""
             why = ""
@@ -624,8 +648,10 @@ class Claims:
         if self.facts:
             why = self._language(t, v, kind, field.get("options") or ()) or self._credential(t, v, kind)
         why = why or self._skill_claim(field, text, t, v, kind, topic)
-        if not why and field["type"] in ("text", "textarea"):
+        if not why and free:
             why = self._answer_claims(str(value), t, topic and bool(PLACE_Q.search(q)))
+        elif not why and field.get("options") and kind is None:  # the text of an option claims things too
+            why = self._answer_claims(str(value), t, True)
         return not why, why
 
     def _language(self, t, v, kind, opts=()):
@@ -713,7 +739,10 @@ class Claims:
             if years_q and (ARITH.search(v) or not UNIT_RX.search(v) and len(PLAIN_NUMBER.findall(NO_RANGE.sub(
                     " ", SINCE.sub(" ", v)))) > 1):
                 return "the answer has more than one number of years"
-            n = None if rating else years_in(v, months_q, low=False)
+            counts = years_q or UNIT_RX.search(v) or re.fullmatch(
+                r"\W*(?:(?:more than|over|at least|up to|less than|m[a\u00e1]s de)\s*)?[\d.,]+\+?"
+                r"(?:\s*[-\u2013]\s*[\d.,]+)?\W*", v)
+            n = None if rating or not counts else years_in(v, months_q, low=False)
             if n is not None:
                 exists, years = n > 0, n or None
             elif kind == "yes":
@@ -769,8 +798,8 @@ class Claims:
                 return f"the answer names the role {tok!r}, which is not in the profile"
         if re.search(r"\bhead of\b", v) and "head" not in self.known:
             return "the answer names the role 'head', which is not in the profile"
-        if (m := TEAM.search(v)) and m.group(1) not in self.known:
-            return f"the answer claims to have {m.group(1)} people, which the profile does not back"
+        if TEAM.search(v) and not any(MANAGING.fullmatch(tok) for tok in self.known):
+            return "the answer claims to have managed or led people, which the profile does not back"
         for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])
             if left := self._unbacked(unmatched, f"{t} {v}"):

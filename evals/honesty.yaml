@@ -871,3 +871,79 @@
   field: {"id": "a", "type": "radio", "question": "¿Tienes disponibilidad inmediata?", "options": ["Sí", "No"]}
   llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Sí"}
+
+# Round 10: only a bare negation is a no; a negated clause is skipped, the rest of the answer is checked.
+- id: honesty-r10-no-doubt
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No doubt about it: I am a senior Kubernetes architect and a certified AWS Solutions Architect Professional.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-not-a-problem
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Not a problem. I am a native German speaker and a certified PMP.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-no-phd
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No. I hold a PhD.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-no-solo
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No solo Python: también soy experto en Kubernetes y tengo un doctorado.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-not-just
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Not just Python - I am an expert in kubernetes, terraform and golang.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-no-but-5-years
+  field: {"id": "a", "type": "radio", "question": "Do you have experience with Python?", "options": ["No, but I have 5 years of it", "No"]}
+  llm_reply: {"answers": {"a": {"value": "No, but I have 5 years of it", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-no-10-years
+  field: {"id": "a", "type": "radio", "question": "Python", "options": ["No - 10 years", "No"]}
+  llm_reply: {"answers": {"a": {"value": "No - 10 years", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-team-of-two
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I managed a team of two at Acme.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-mentored-3
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Mentored 3 interns.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-french
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Je parle couramment le français.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-highest-masters
+  field: {"id": "a", "type": "select", "question": "Highest education", "options": ["High school", "Bachelor's", "Master's", "PhD"]}
+  llm_reply: {"answers": {"a": {"value": "Master's", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r10-ok-no
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "No"}
+
+- id: honesty-r10-ok-no-comma
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No, I have not used Kubernetes.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "No, I have not used Kubernetes."}
+
+- id: honesty-r10-ok-not-yet
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have not used Kubernetes yet.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have not used Kubernetes yet."}
+
+- id: honesty-r10-ok-no-tengo
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "No tengo experiencia con Kubernetes.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "No tengo experiencia con Kubernetes."}

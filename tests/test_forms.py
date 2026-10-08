@@ -762,3 +762,25 @@ def test_fixed_rules_for_age_and_availability_are_the_users_own(tmp_path, monkey
               field("c", "Your skills")]
     answers, missing = a.decide(fields, OFFER)
     assert answers == {"a": "Yes", "b": "Sí"} and missing == ["Your skills"]
+
+
+# --- round 10 ---------------------------------------------------------------------------------------------------------
+
+def test_a_failing_check_leaves_the_field_to_the_user(tmp_path, monkeypatch):
+    logs = []
+    a = claimer(tmp_path, 3, logs)
+    monkeypatch.setattr(a.claims, "check", lambda *args: 1 / 0)
+    fake_llm(monkeypatch, {"answers": {"a": "Yes"}, "unknown": []})
+    q = "Do you have Python experience?"
+    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])
+    assert any("honesty check failed" in m for m in logs)
+
+
+def test_fixed_rule_with_a_small_number_does_not_crash(tmp_path, monkeypatch):
+    rules = [{"pattern": "juniors", "value": "I mentored 2 juniors"}]
+    profile = {**PROFILE, "fixed_answers": rules, "facts": [{"id": "skill.python", "kind": "skill", "name": "Python",
+                                                           "years": 3}]}
+    a = FormAssistant(profile, "name: Alex", tmp_path, "m", lambda *_: None)
+    fake_llm(monkeypatch, {"answers": {}, "unknown": []})
+    q = "Tell us about the juniors you mentored"
+    assert a.decide([field("a", q)], OFFER) == ({}, [q])

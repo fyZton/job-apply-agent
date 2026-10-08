@@ -396,3 +396,68 @@ def test_fixed_rule_value_is_the_users_but_cannot_inject_a_claim():
     assert verdict_q("Do you have Kubernetes experience?", "Yes", "radio", fixed=True)  # the user's own rule
     assert not verdict_q("Skills", "Kubernetes expert", "text", fixed=True)
     assert not verdict_q("Headline", "Senior engineer, PhD", "text", fixed=True)
+
+
+# --- round 10 --------------------------------------------------------------------------------------------------------
+
+CS = {**PROFILE, "facts": [f for f in BASE if f["kind"] != "education"]
+      + [{"id": "edu.cs", "kind": "education", "name": "B.Sc. Computer Science", "year": 2023}]}
+EDU_OPTS = ["High school", "Bachelor's", "Master's", "PhD"]
+
+R10_REJECT = [
+    ("textarea", "Anything else?",
+     "No doubt about it: I am a senior Kubernetes architect and a certified AWS Solutions Architect Professional.",
+     None),
+    ("textarea", "Anything else?", "Not a problem. I am a native German speaker and a certified PMP.", None),
+    ("textarea", "Anything else?", "No. I hold a PhD.", None),
+    ("textarea", "Anything else?",
+     "No solo Python: también soy experto en Kubernetes y tengo un doctorado.", None),
+    ("textarea", "Anything else?", "Not just Python - I am an expert in kubernetes, terraform and golang.", None),
+    ("radio", "Do you have experience with Python?", "No, but I have 5 years of it",
+     ["No, but I have 5 years of it", "No"]),
+    ("radio", "Python", "No - 10 years", ["No - 10 years", "No"]),
+    ("textarea", "Anything else?", "I managed a team of two at Acme.", None),
+    ("textarea", "Anything else?", "I managed a team of 4", None),
+    ("textarea", "Anything else?", "Mentored 3 interns.", None),
+    ("textarea", "Anything else?", "I led 2 projects in Python.", None),
+    ("select", "Highest education", "Master's", EDU_OPTS),
+    ("select", "Highest education", "PhD", EDU_OPTS),
+    ("select", "Highest degree", "Master's", EDU_OPTS),
+    ("textarea", "Anything else?", "Je parle couramment le français.", None),
+    ("textarea", "Anything else?", "Ich spreche Deutsch.", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R10_REJECT)
+def test_round10_rejects(type_, question, value, options):
+    assert not verdict_q(question, value, type_, options, profile=CS)
+
+
+R10_ACCEPT = [
+    ("textarea", "Anything else?", "No", None),
+    ("textarea", "Anything else?", "No, I have not used Kubernetes.", None),
+    ("textarea", "Anything else?", "I have not used Kubernetes yet.", None),
+    ("textarea", "Anything else?", "No tengo experiencia con Kubernetes.", None),
+    ("radio", "Do you have experience with Python?", "No, thanks", ["No, thanks", "Yes"]),
+    ("select", "Highest education", "Bachelor's", EDU_OPTS),
+    ("select", "Highest degree", "Bachelor's", EDU_OPTS),
+    ("select", "Education level", "Bachelor's degree", ["High school", "Bachelor's degree", "Master's degree"]),
+    ("text", "What is your highest level of education?", "B.Sc. Computer Science", None),
+    ("radio", "Do you have a university degree?", "Yes", None),
+    ("select", "¿Nivel de estudios?", "Universitario", ["Secundaria", "Universitario", "Posgrado"]),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R10_ACCEPT)
+def test_round10_accepts(type_, question, value, options):
+    assert verdict_q(question, value, type_, options, profile=CS)
+
+
+def test_managing_claims_need_a_managing_verb_in_the_profile():
+    managing = {**CS, "facts": CS["facts"] + [{"id": "exp.b", "kind": "experience", "title": "Lead",
+                                                "org": "Beta", "start": "2020-01", "bullets": [
+                                                    {"id": "exp.b.b1", "text": "Managed a small team"}]}]}
+    assert verdict_q("Anything else?", "I managed a team of two at Acme.", "textarea", profile=managing)
+    claims = Claims(load_facts(CS), None, CS)
+    why = claims.check({"type": "textarea"}, "Anything else?", "I managed a team of 4")[1]
+    assert "years" not in why and why

@@ -191,7 +191,11 @@ class FormAssistant:
     def _claim_ok(self, field, question, value, fixed=False):
         """(ok, reason): the one honesty check, run on the resolved value of every field type and every source
         (rule, cache, model). See jobagent.claims."""
-        return self.claims.check(field, question, value, fixed)
+        try:
+            return self.claims.check(field, question, value, fixed)
+        except Exception as e:  # a checker bug must leave the field to the user, never crash the run
+            self.log(f"honesty check failed on {question[:60]!r} ({type(e).__name__}); left for you to answer")
+            return False, f"the check failed ({type(e).__name__})"
 
     def _years_blocked(self, text):
         """A v2 profile with no skill facts has nothing to back a years answer: those questions go to manual
