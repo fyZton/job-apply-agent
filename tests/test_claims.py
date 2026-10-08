@@ -141,16 +141,16 @@ def test_lowercase_city_answer_and_topic_questions():
     assert verdict("Current city", "caracas", "text")
     assert not verdict("Current city", "kubernetes", "text")
     assert verdict("Do you have a Kubernetes background?", "kubernetes", "text") is False
-    assert verdict("Do you use terraform at work?", "we use terraform every day at the office", "text")
+    assert not verdict("Do you use terraform at work?", "we use terraform every day at the office", "text")
 
 
 # --- round 6: a topic word in the question never switches the checks off ---------------------------------------
 
-def verdict_q(question, value, type_="radio", options=None, context="", profile=PROFILE):
+def verdict_q(question, value, type_="radio", options=None, context="", profile=PROFILE, fixed=False):
     claims = Claims(load_facts(profile), None, profile)
     field = {"type": type_, "question": question, "context": context,
              "options": YN if options is None and type_ == "radio" else options}
-    return claims.check(field, f"{context} {question}".strip(), value)[0]
+    return claims.check(field, f"{context} {question}".strip(), value, fixed)[0]
 
 
 TOPIC_REJECT = [
@@ -332,3 +332,67 @@ R8_ACCEPT = [
 @pytest.mark.parametrize("type_, question, value, options", R8_ACCEPT)
 def test_round8_accepts(type_, question, value, options):
     assert verdict_q(question, value, type_, options)
+
+
+# --- round 9 ---------------------------------------------------------------------------------------------------------
+
+YEAR = __import__("datetime").date.today().year
+
+R9_REJECT = [
+    ("textarea", "Describe your experience with Kubernetes", "I have used Kubernetes in production daily at Acme."),
+    ("text", "Do you have Kubernetes experience?", "I use it daily at work"),
+    ("text", "Tell us about your Kubernetes experience",
+     "Kubernetes is my main tool and I run it in production every day."),
+    ("textarea", "Anything else?", "Expert in Python."),
+    ("textarea", "Anything else?", "I am a python expert"),
+    ("textarea", "Anything else?", "I am an expert python developer."),
+    ("textarea", "Anything else?", "Experto en Python."),
+    ("textarea", "Anything else?", "I am a senior engineer."),
+    ("textarea", "Anything else?", "I was the lead engineer and engineering manager for 20 people."),
+    ("textarea", "Anything else?", "I have been a manager for years."),
+    ("textarea", "Anything else?", "I have managed a team of twelve developers."),
+    ("radio", "Do you have an advanced degree?", "Yes"),
+    ("radio", "Do you have a graduate degree?", "Yes"),
+    ("textarea", "Anything else?", "I hold an ms in cs."),
+    ("radio", "Are you bilingual?", "Yes"),
+    ("textarea", "Anything else?", "I'm bilingual."),
+    ("radio", "Do you have native-level proficiency?", "Yes"),
+    ("textarea", "Anything else?", "I've been coding since 1999."),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R9_REJECT)
+def test_round9_rejects(type_, question, value):
+    assert not verdict_q(question, value, type_)
+
+
+R9_ACCEPT = [
+    ("textarea", "Describe your experience with Python", "I have used Python for 3 years building REST APIs at Acme."),
+    ("textarea", "Describe your experience with Kubernetes", "I have not used Kubernetes yet."),
+    ("text", "Do you have Kubernetes experience?", "No, I have never used it."),
+    ("textarea", "Anything else?", "I have intermediate Python skills."),
+    ("textarea", "Anything else?", "I am a backend developer."),
+    ("textarea", "Anything else?", f"I've been using Python since {YEAR - 2}."),
+    ("radio", "Do you have an undergraduate degree?", "Yes"),
+    ("radio", "Are you at least 18 years old?", "Yes"),
+    ("radio", "Are you 18 years of age or older?", "Yes"),
+    ("radio", "Can you work from our office 3 days a week?", "Yes"),
+    ("radio", "Are you available to work full-time?", "Yes"),
+    ("radio", "Are you open to contract work?", "Yes"),
+    ("radio", "Do you have a reliable internet connection?", "Yes"),
+    ("radio", "¿Aceptas trabajar de forma remota?", "Sí"),
+    ("radio", "¿Tienes disponibilidad inmediata?", "Sí"),
+]
+
+
+@pytest.mark.parametrize("type_, question, value", R9_ACCEPT)
+def test_round9_accepts(type_, question, value):
+    assert verdict_q(question, value, type_)
+
+
+def test_fixed_rule_value_is_the_users_but_cannot_inject_a_claim():
+    assert verdict_q("Are you at least 18 years old?", "Yes", "radio", fixed=True)
+    assert verdict_q("¿Tienes disponibilidad inmediata?", "Sí", "radio", fixed=True)
+    assert verdict_q("Do you have Kubernetes experience?", "Yes", "radio", fixed=True)  # the user's own rule
+    assert not verdict_q("Skills", "Kubernetes expert", "text", fixed=True)
+    assert not verdict_q("Headline", "Senior engineer, PhD", "text", fixed=True)

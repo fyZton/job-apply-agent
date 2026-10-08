@@ -188,10 +188,10 @@ class FormAssistant:
         i = best_option(value, options)
         return None if i is None else options[i]
 
-    def _claim_ok(self, field, question, value):
+    def _claim_ok(self, field, question, value, fixed=False):
         """(ok, reason): the one honesty check, run on the resolved value of every field type and every source
         (rule, cache, model). See jobagent.claims."""
-        return self.claims.check(field, question, value)
+        return self.claims.check(field, question, value, fixed)
 
     def _years_blocked(self, text):
         """A v2 profile with no skill facts has nothing to back a years answer: those questions go to manual
@@ -272,7 +272,7 @@ class FormAssistant:
             cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
             rule, cached = self._resolve(f, rule), self._resolve(f, cached)
             if rule is not None:
-                ok, reason = self._claim_ok(f, text, rule)
+                ok, reason = self._claim_ok(f, text, rule, fixed=True)
                 if ok:
                     answers[f["id"]] = rule
                 else:

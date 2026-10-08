@@ -5,6 +5,7 @@ resolved answer and fails closed: unless the question is about a recognised non-
 location, contact details, consent...), everything it names must be a profile fact, and a free-text answer is
 checked token by token. Whatever is not recognised is rejected and the field goes to manual review.
 """
+import datetime
 import re
 import unicodedata
 
@@ -116,6 +117,11 @@ disability disabilities discapacidad veteran veterans race ethnic ethnicity etni
 employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
+old older adult adults mayor mayores edad accept accepts
+full-time part-time fulltime parttime contract contractor contractors freelance employee employees office oficina
+onsite on-site hybrid commute internet connection reliable equipment laptop computer inmediata inmediato
+immediately forma modalidad shift shifts weekend weekends travel viajar references reference referencias open
+presencial
 """.split())
 NON_CLAIM_PHRASES = ("per hour", "por hora", "day rate", "start date", "fecha de inicio", "time zone",
                      "zona horaria", "sitio web", "how did you hear", "como te enteraste", "background check",
@@ -127,10 +133,10 @@ NON_CLAIM = re.compile(r"(?<![\w.-])(?:" + "|".join(sorted(NON_CLAIM_WORDS | set
 ROLE_TERMS = set("""
 developer developers dev programmer engineer engineers analyst specialist consultant backend frontend fullstack web
 senior lead teamlead mobile devops qa architect manager scrummaster dataengineer dataanalyst datascientist
-productmanager projectmanager
+productmanager projectmanager director principal
 """.split())
-ROLE_ANS = ROLE_TERMS - set(
-    "backend developer developers dev programmer engineer engineers web senior lead manager".split())
+# In an answer every role word needs profile text behind it, backend and developer included.
+ROLE_ANS = ROLE_TERMS - {"web"}
 ADVERBS = set("""
 fluently natively currently previously recently mainly mostly directly remotely fully really only early daily weekly
 monthly yearly approximately roughly professionally personally commercially successfully independently actively
@@ -155,7 +161,9 @@ PLACE_Q = re.compile(r"country|pais|city|ciudad|location|ubicacion|residen|addre
 EDU_Q = re.compile(r"\b(?:degree|bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
                    r"doctorado|diploma|titulo|grado|graduate|universit\w*|education|educacion|estudios|carrera)\b")
 CERT_Q = re.compile(r"\bcertif\w*|\bcertificad\w*")
-EDU_RANKS = ((3, r"\b(?:phd|doctor\w*)\b"), (2, r"\b(?:master\w*|maestri\w*|msc|mba|posgrado|postgrad\w*)\b"),
+EDU_RANKS = ((3, r"\b(?:phd|doctor\w*)\b"),
+             (2, r"\b(?:master\w*|maestri\w*|msc|ms|mba|posgrado|postgrad\w*|advanced degree|"
+                 r"graduate degree)\b"),
              (1, r"\b(?:bachelor\w*|licenciatur\w*|ingenier\w*|engineer\w*|bsc|undergrad\w*|grado)\b"))
 MORE_THAN = re.compile(r"(?:more than|over|m[aá]s de)\s*" + NUM, re.I)
 AT_LEAST = re.compile(r"(?:at least|minimum|m[ií]nimo)\s*" + NUM + r"|" + NUM + r"\s*\+?\s*(?:years?|yrs?|años?)\b",
@@ -284,8 +292,14 @@ def answer_kind(v):
     return "yes" if first in YES else "no" if first in NO else None
 
 
+AGE = re.compile(r"(?:(?:at least|minimum|more than|over|m[aá]s de)\s*)?\d+\s*\+?\s*(?:years?|yrs?|a[nñ]os?)\s*"
+                 r"(?:old|of age|de edad)|mayor(?:es)? de\s*\d+", re.I)
+
+
 def threshold(text):
-    """The most years a question asks for ("at least 5 years", "7+ years", "más de 5" is 6), or None."""
+    """The most years a question asks for ("at least 5 years", "7+ years", "más de 5" is 6), or None. An age
+    ("18 years old") is not an experience threshold."""
+    text = AGE.sub(" ", text)
     nums = [float(m.replace(",", ".")) + 1 for m in MORE_THAN.findall(text)]
     nums += [float((a or b).replace(",", ".")) for a, b in AT_LEAST.findall(text)]
     return max(nums, default=None)
@@ -388,7 +402,18 @@ CERT_CTX = re.compile(r"\bcertif\w*|\bholds?\b|\b(?:pmp|capm|cka|ckad|cks|cissp|
                       r"itil|ccna|ccnp|csm|psm|oscp|ceh|togaf|prince2|comptia|ielts|toefl)\b")
 SCRUM = re.compile(r"\bscrum masters?\b")
 CERTIFIED = re.compile(r"\b(?:certified|certificad[oa])\b")
-ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|masters?|maestria|mba|msc|bachelors?|licenciatura|bsc)\b")
+ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|masters?|maestria|mba|msc|m\.sc|ms|m\.s|bachelors?|licenciatura|"
+                     r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree)\b")
+BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speaker|proficiency)|\bnivel nativo|"
+                       r"\bnative proficiency|\bfull proficiency")
+NEGATED = re.compile(r"^\W*(?:(?:i|yo)\s+)?(?:(?:have|has|had|do|did|am|was|he|hemos)\s+)?"
+                     r"(?:not|never|nunca|no|havent|dont|didnt)\b")
+BUT = re.compile(r"\b(?:but|pero|however|although|aunque|except|excepto)\b")
+TEAM = re.compile(r"\b(?:managed|managing|led|leading|supervised|mentored|directed|lider\w*|dirig\w*|gestion\w*)\b"
+                  r"[^.;!?]{0,25}?\b(?:\d+|" + "|".join(_NUMW) + r")\b")
+SINCE_YEAR = re.compile(r"\b(?:since|desde)\s+((?:19|20)\d\d)\b")
+DOING = re.compile(r"cod(?:e|ing)|program\w*|develop\w*|software|engineer\w*|work(?:ed|ing)|using|used|experience|"
+                   r"experiencia|trabaj\w*|desarroll\w*|usando|building|built")
 SUBJECT = re.compile(r"\b(?:degrees?|bachelors?|masters?|phd|doctorate|doctorado|licenciatura|maestria|grado|titulo|"
                      r"diploma|mba|msc|bsc)\b[^.?!;,]*?\b(?:in|of|en|de|del)\s+([^.?!;,]*)")
 # Words in an answer that look like names but are not technologies.
@@ -512,11 +537,12 @@ class Claims:
         text = [f.text for f in facts.values() if f.kind != "cert"]
         text += list(_flatten({k: v for k, v in (profile or {}).items() if k != "facts"},
                               skip=("fixed_answers", "screening_rules")))
-        text += [r["value"] for r in (profile or {}).get("fixed_answers") or []
-                 if isinstance(r, dict) and isinstance(r.get("value"), str)]
         self.known = set(TOKEN.findall(fold(" ".join(text))))
-        # Links and addresses the profile itself holds: a contact-link answer equal to one is backed.
-        self.links = {fold(x).strip() for x in text if re.search(r"://|@|^www\.", x)}
+        # Links and addresses the profile or a rule of the user holds: a contact-link answer equal to one is backed.
+        # A rule's other values do not back claims: a rule cannot make "Kubernetes expert" true.
+        rules = [r["value"] for r in (profile or {}).get("fixed_answers") or []
+                 if isinstance(r, dict) and isinstance(r.get("value"), str)]
+        self.links = {fold(x).strip() for x in text + rules if re.search(r"://|@|^www\.", x)}
 
     @staticmethod
     def key(name):
@@ -569,8 +595,10 @@ class Claims:
         """The years a number or text answer states, or None."""
         return years_in(fold(value), bool(MONTHS.search(fold(text))), low=False)
 
-    def check(self, field, text, value):
-        """(ok, reason) for the resolved `value` of `field` under the question `text`."""
+    def check(self, field, text, value, fixed=False):
+        """(ok, reason) for the resolved `value` of `field` under the question `text`. A `fixed` value is the
+        user's own rule: the question is not checked, but the value cannot claim a technology, role, degree,
+        certificate or language the profile lacks."""
         if not self.enabled:
             return True, ""
         t, v = fold(text), spell(fold(value))
@@ -578,6 +606,16 @@ class Claims:
         why = ""
         if v.strip() in self.links:
             return True, ""
+        free = field["type"] in ("text", "textarea")
+        if free and not fixed and NEGATED.match(v) and not BUT.search(v) and not re.search(r"\d", v):
+            return True, ""  # "I have not used Kubernetes yet." claims nothing
+        if fixed:  # the rule answers its label; a legend that claims experience is still checked
+            legend = field.get("context") or ""
+            why = ""
+            if legend and not self._topic(fold(legend), named=False):
+                why = self.check({**field, "question": legend, "context": ""}, legend, value)[1]
+            why = why or self._answer_claims(str(value), "", True)
+            return not why, why
         if field["type"] in ("text", "textarea") and SALARY_Q.search(fold(field.get("question") or text)) and [
                 tok for tok in TOKEN.findall(v) if not NUMTOK.fullmatch(tok) and tok not in MONEY]:
             return False, "a pay answer is a number and a currency, nothing else"
@@ -595,6 +633,8 @@ class Claims:
             return ""
         langs = {LANGS[w] for w in LANG_RX.findall(t)} | {LANGS[w] for w in LANG_RX.findall(v)}
         if not langs:
+            if (BILINGUAL.search(t) or BILINGUAL.search(v)) and sum(r >= 6 for r in self.langs.values()) < 2:
+                return "claims to be bilingual, which the profile's languages do not back"
             return ""
         level = max(rank(t), 1) if kind == "yes" else rank(v)
         if kind is None and not level and not YEARS_Q.search(t) and (num := rating_of(v)):
@@ -681,7 +721,7 @@ class Claims:
             elif kind is None:
                 if years_q:
                     return "the answer has no number of years to check"
-                exists = bool(rank(v)) or len(v.split()) <= 3  # a long free answer is read by _answer_claims
+                exists = True
         if not exists:
             return ""
         if opts and kind is None:
@@ -722,23 +762,56 @@ class Claims:
         v = spell(fold(raw))
         for name in known_tech(raw):  # lowercase names count too, on every question
             matched, unmatched = self.resolve([TOKEN.findall(name)])
-            if left := self._unbacked(unmatched, f"{t} {v}", t):
+            if left := self._unbacked(unmatched, f"{t} {v}"):
                 return f"the answer names {' '.join(left)!r}, which is not in the profile"
-        echo = set(TOKEN.findall(t))
         for tok in TOKEN.findall(v):
-            if tok in ROLE_ANS and tok not in self.known and tok not in echo:
+            if tok in ROLE_ANS and tok not in self.known:
                 return f"the answer names the role {tok!r}, which is not in the profile"
+        if re.search(r"\bhead of\b", v) and "head" not in self.known:
+            return "the answer names the role 'head', which is not in the profile"
+        if (m := TEAM.search(v)) and m.group(1) not in self.known:
+            return f"the answer claims to have {m.group(1)} people, which the profile does not back"
         for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])
-            if left := self._unbacked(unmatched, f"{t} {v}", t):
+            if left := self._unbacked(unmatched, f"{t} {v}"):
                 return f"the answer names {' '.join(left)!r}, which is not in the profile"
         for runs, years in mentions(v):
             matched, unmatched = self.resolve(runs)
-            if left := self._unbacked(unmatched, f"{t} {v}", t):
+            if left := self._unbacked(unmatched, f"{t} {v}"):
                 return f"the answer claims experience with {' '.join(left)!r}, which is not in the profile"
             if why := self._years_within(matched, years):
                 return "the answer " + why
-        return self._answer_credentials(v) if self.facts else ""
+        return self._answer_levels(v) or self._answer_since(v) or (self._answer_credentials(v) if self.facts else "")
+
+    def _answer_levels(self, v):
+        """"Expert in Python": a level word next to a profile skill needs the years of that level."""
+        for clause in re.split(r"[.;!?\n]", v):
+            toks = TOKEN_OR_COMMA.findall(clause)
+            for i, tok in enumerate(toks):
+                word = RANK.get(tok) or RANK.get(tok[:-2], 0) if tok.endswith("ly") else RANK.get(tok, 0)
+                word = 6 if tok in ("mastered", "guru", "senior-level") else word
+                if word < 3 or tok in LANGS:
+                    continue
+                for j in [*range(i - 1, max(i - 5, -1), -1), *range(i + 1, min(i + 5, len(toks)))]:
+                    if toks[j] == "," or toks[j] in LANGS:
+                        continue
+                    if (hit := self._skill([toks[j]])) and hit[1] < WORD_YEARS.get(word, 0):
+                        return f"the answer rates {hit[0]} above the {hit[1]:g} years the profile has"
+        return ""
+
+    def _answer_since(self, v):
+        """"I have been coding since 1999" is 27 years, unless the answer also says how long."""
+        if YEARS_RX.search(v):
+            return ""
+        for clause in re.split(r"[.;!?\n]", v):
+            m = SINCE_YEAR.search(clause)
+            if not m or not DOING.search(clause):
+                continue
+            years = datetime.date.today().year - int(m.group(1))
+            matched, _ = self.resolve(groups(clause))
+            if why := self._years_within(matched, years):
+                return "the answer " + why
+        return ""
 
     def _answer_credentials(self, v):
         toks = TOKEN_OR_COMMA.findall(v)

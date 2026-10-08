@@ -247,7 +247,7 @@ Job postings and form labels are written by third parties and end up in the prom
    words; two candidates, such as `Yes` against `Yes, 5+ years` and `Yes, less than 2 years`, count as no match), and
    every check below runs on that option.
    **The honesty rule.** One check, `jobagent/claims.py`, runs on the resolved answer of every field type
-   (number, text, text area, select, radio, checkbox) and for every source: fixed rule, learned cache and model.
+   (number, text, text area, select, radio, checkbox) and for every source: fixed rule (see below), learned cache and model.
    Any answer other than No / 0 / None must be backed by the profile. A question or an answer that names
    something that is not in the profile goes to manual review, and so does anything the check cannot read. Free-text
    answers are checked token by token against the profile, and anything unrecognised goes to manual review.
@@ -275,6 +275,20 @@ Job postings and form labels are written by third parties and end up in the prom
      phones, adverbs or confirmations). Role and domain words (`frontend`, `mobile`, `data analyst`, `team lead`,
      `consultant`, `engineer`...) are claim terms: they need profile text behind them (an experience title, a bullet, a
      skill or the summary), so a backend-only profile cannot say yes to `frontend`.
+   - Free-text answers are read against the question whatever their length: `Describe your experience with
+     Kubernetes` needs a Kubernetes fact however long the reply, and the question's own words never back a
+     technology or role in the answer. An answer that starts with a plain negation (`I have not used Kubernetes
+     yet.`) claims nothing. In answers, `senior`, `lead`, `manager`, `director`, `principal`, `head of`, `engineer`,
+     `frontend`, `mobile`, `consultant` and the like, and also `backend` and `developer`, must appear in the
+     profile text (titles, bullets, skills, summary); `managed a team of 12` needs a managing verb in the profile.
+     A level word next to a skill (`Expert in Python`, `Experto en Python`) needs the years of that level.
+     `Coding since 1999` counts as the years since 1999 unless the answer gives a duration. `Bilingual` and
+     `native-level` need two languages at C2. `Advanced degree`, `graduate degree`, `postgraduate`, `posgrado` and
+     `MS` count as a master's.
+   - Fixed rules (`fixed_answers`) are your own assertions: the rule's question is not checked, so `18|mayor de edad`
+     -> `Yes` works. A legend that claims experience is still checked, and the value of the rule cannot name a
+     technology, role, degree, certificate or language the profile lacks (a rule `Kubernetes expert` is refused).
+     Questions about age, schedule, contract type, office, internet or equipment name no skill and are answered.
    - Word ratings: `Expert` for a skill needs 5 years in the profile, `Advanced` 3, `Intermediate` 1; and when the
      options form an ordered scale of three or more levels, anything above the middle one is rejected too.
      `More than 3 years` claims more than 3; `3+3` or two loose numbers in a years answer are rejected; a pay answer
@@ -343,7 +357,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 154 | 154 | 100% |
+| honesty | 173 | 173 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

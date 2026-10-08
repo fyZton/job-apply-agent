@@ -775,3 +775,99 @@
   field: {"id": "a", "type": "radio", "question": "Are you authorized to work in Spain?", "options": ["Yes", "No"]}
   llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Yes"}
+
+# Round 9: long answers are read against the question, level and role words in answers, age and schedule questions.
+- id: honesty-r9-long-kubernetes
+  field: {"id": "a", "type": "textarea", "question": "Describe your experience with Kubernetes"}
+  llm_reply: {"answers": {"a": {"value": "I have used Kubernetes in production daily at Acme.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-it-daily
+  field: {"id": "a", "type": "text", "question": "Do you have Kubernetes experience?"}
+  llm_reply: {"answers": {"a": {"value": "I use it daily at work", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-expert-python
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Expert in Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-expert-es
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Experto en Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-senior-engineer
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I am a senior engineer.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-managed-team
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have managed a team of twelve developers.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-advanced-degree
+  field: {"id": "a", "type": "radio", "question": "Do you have an advanced degree?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-ms-degree
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hold an ms in cs.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-bilingual
+  field: {"id": "a", "type": "radio", "question": "Are you bilingual?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-since-1999
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I've been coding since 1999.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r9-ok-python-long
+  field: {"id": "a", "type": "textarea", "question": "Describe your experience with Python"}
+  llm_reply: {"answers": {"a": {"value": "I have used Python for 3 years building SQL reports.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have used Python for 3 years building SQL reports."}
+
+- id: honesty-r9-ok-not-used
+  field: {"id": "a", "type": "textarea", "question": "Describe your experience with Kubernetes"}
+  llm_reply: {"answers": {"a": {"value": "I have not used Kubernetes yet.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have not used Kubernetes yet."}
+
+- id: honesty-r9-ok-age
+  field: {"id": "a", "type": "radio", "question": "Are you at least 18 years old?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r9-ok-office
+  field: {"id": "a", "type": "radio", "question": "Can you work from our office 3 days a week?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r9-ok-fulltime
+  field: {"id": "a", "type": "radio", "question": "Are you available to work full-time?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r9-ok-contract
+  field: {"id": "a", "type": "radio", "question": "Are you open to contract work?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r9-ok-internet
+  field: {"id": "a", "type": "radio", "question": "Do you have a reliable internet connection?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r9-ok-remota
+  field: {"id": "a", "type": "radio", "question": "¿Aceptas trabajar de forma remota?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}
+
+- id: honesty-r9-ok-disponibilidad
+  field: {"id": "a", "type": "radio", "question": "¿Tienes disponibilidad inmediata?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}

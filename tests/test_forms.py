@@ -260,9 +260,9 @@ def test_zero_needs_no_citation(grounded, monkeypatch):
 
 
 def test_textarea_without_citation_is_fine_unless_it_claims_experience(grounded, monkeypatch):
-    fake_llm(monkeypatch, {"answers": {"a": "I love backend work."}, "unknown": []})
+    fake_llm(monkeypatch, {"answers": {"a": "I love building useful things."}, "unknown": []})
     answers, _ = grounded.decide([field("a", "Why do you want this job?", "textarea")], OFFER)
-    assert answers == {"a": "I love backend work."}
+    assert answers == {"a": "I love building useful things."}
     fake_llm(monkeypatch, {"answers": {"a": "Ten years of Python."}, "unknown": []})
     answers, missing = grounded.decide([field("b", "Describe your years of experience", "textarea")], OFFER)
     assert answers == {} and missing == ["Describe your years of experience"]
@@ -696,7 +696,7 @@ def test_cached_and_rule_answers_get_the_same_check(tmp_path, monkeypatch):
     a = FormAssistant({**PROFILE, "fixed_answers": rules, "facts": RICH}, "name: Alex", tmp_path, "m", lambda *_: None)
     calls = fake_llm(monkeypatch, {"answers": {}, "unknown": []})
     q = "Do you have Kubernetes experience?"
-    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({}, [q])  # the rule is checked too
+    assert a.decide([field("a", q, "radio", options=YES_NO)], OFFER) == ({"a": "Yes"}, [])  # the user's own rule
     assert calls == []
     b = FormAssistant({**PROFILE, "facts": RICH}, "name: Alex", tmp_path, "m", lambda *_: None)
     b.cache[normalize(q)] = "Yes"
@@ -738,3 +738,27 @@ def test_consent_checkbox_whose_legend_claims_experience_is_rejected(tmp_path, m
     f["value"] = False
     answers, _ = a.decide([f], OFFER)
     assert answers == {"a": "Yes" if via == "rule" else True}
+
+
+# --- round 9: through decide ----------------------------------------------------------------------------------------
+
+def test_long_textarea_answer_about_an_unknown_technology_is_rejected(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    reply = "I have used Kubernetes in production daily at Acme."
+    fake_llm(monkeypatch, {"answers": {"a": reply}, "unknown": []})
+    q = "Describe your experience with Kubernetes"
+    assert a.decide([field("a", q, "textarea")], OFFER) == ({}, [q])
+
+
+def test_fixed_rules_for_age_and_availability_are_the_users_own(tmp_path, monkeypatch):
+    rules = [{"pattern": "18|mayor de edad", "value": "Yes"}, {"pattern": "disponibilidad", "value": "Sí"},
+             {"pattern": "skills", "value": "Kubernetes expert"}]
+    profile = {**PROFILE, "fixed_answers": rules, "facts": [{"id": "skill.python", "kind": "skill", "name": "Python",
+                                                           "years": 3}]}
+    a = FormAssistant(profile, "name: Alex", tmp_path, "m", lambda *_: None)
+    fake_llm(monkeypatch, {"answers": {}, "unknown": []})
+    fields = [field("a", "Are you at least 18 years old?", "radio", options=YES_NO),
+              field("b", "¿Tienes disponibilidad inmediata?", "radio", options=["Sí", "No"]),
+              field("c", "Your skills")]
+    answers, missing = a.decide(fields, OFFER)
+    assert answers == {"a": "Yes", "b": "Sí"} and missing == ["Your skills"]
