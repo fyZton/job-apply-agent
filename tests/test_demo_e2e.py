@@ -144,7 +144,7 @@ def test_config_error_aborts_the_whole_run(monkeypatch, tmp_path):
 def test_errors_from_the_form_step_are_not_swallowed(monkeypatch, tmp_path, exc):
     monkeypatch.setenv("JOBAGENT_LLM", "fake")
     monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(llm, "answer_fields", lambda *a: (_ for _ in ()).throw(exc))
+    monkeypatch.setattr(llm, "answer_fields", lambda *a, **kw: (_ for _ in ()).throw(exc))
     run = demo(headless=True)
     assert "Stopping" in log_text(tmp_path)
     assert run.summary["demo", "error"] == 0

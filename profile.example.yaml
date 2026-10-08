@@ -1,6 +1,8 @@
-# Copy to profile.yaml. The LLM answers forms ONLY from this file: it never invents experience.
+# Copy to profile.yaml, or run `python -m jobagent --setup` to fill it in step by step.
+# The LLM answers forms ONLY from this file: it never invents experience.
 # This example is a fictional candidate.
 
+version: 2
 first_name: Alex
 last_name: Example
 email: alex@example.com
@@ -11,23 +13,34 @@ timezone: UTC-4
 linkedin: https://www.linkedin.com/in/alex-example
 github: https://github.com/alex-example
 
-degree: B.Sc. Computer Science, 2023
-english: B2, works day to day in English.
-spanish: Native
-
 work_mode: 100% remote only.
 open_to_contractor: yes
 needs_visa_sponsorship: no
 available_to_start: 2 weeks
 expected_salary_usd_monthly: 1800
 
-# Real years. Anything not listed here is answered as 0.
-years_of_experience:
-  software_development: 3
-  python: 3
-  sql: 2
-  rest_apis_and_integrations: 2
-  docker: 1
+# Facts are what the agent may claim. Each has a stable id; answers cite those ids and anything that is not
+# here is answered as 0 or left for you. Ids are written once and never change, so keep them when you edit.
+# kinds: skill (years), cert (year), experience (title, org, start, end, bullets), education, language (level).
+facts:
+  - {id: skill.software-development, kind: skill, name: Software development, years: 3}
+  - {id: skill.python, kind: skill, name: Python, years: 3}
+  - {id: skill.sql, kind: skill, name: SQL, years: 2}
+  - {id: skill.rest-apis-and-integrations, kind: skill, name: REST APIs and integrations, years: 2}
+  - {id: skill.docker, kind: skill, name: Docker, years: 1}
+  - {id: cert.aws-ccp, kind: cert, name: AWS Cloud Practitioner, year: 2024}
+  - id: exp.acme-2023
+    kind: experience
+    title: Backend Developer
+    org: Acme
+    start: 2023-01
+    end: present
+    bullets:
+      - {id: exp.acme-2023.b1, text: Built REST integrations between internal services and partner APIs}
+      - {id: exp.acme-2023.b2, text: Automated a weekly reporting job in Python}
+  - {id: edu.bsc-computer-science, kind: education, name: B.Sc. Computer Science, year: 2023}
+  - {id: lang.english, kind: language, name: English, level: B2}
+  - {id: lang.spanish, kind: language, name: Spanish, level: Native}
 
 summary: >
   Developer focused on backend and integrations: REST APIs, webhooks and automation.

@@ -25,6 +25,7 @@ from playwright.sync_api import sync_playwright
 from jobagent import evals, llm
 from jobagent.core import DATA_DIR, SessionExpired, StopRequested, pause, set_stop_check
 from jobagent.forms import FormAssistant
+from jobagent.profile import ProfileError, dump, load_profile
 from jobagent.safety import looks_injected, stop_requested
 from jobagent.sites import SITES
 from jobagent.tracker import Tracker
@@ -103,8 +104,13 @@ class Run:
         self.data = Path(data)
         set_stop_check(lambda: stop_requested(self.data))
         llm.configure(cfg.get("llm", {}))
-        self.profile_text = load_yaml("profile.yaml", root)
-        profile = yaml.safe_load(self.profile_text)
+        load_yaml("profile.yaml", root)  # exits with a hint if the file is missing
+        try:
+            profile = load_profile(root / "profile.yaml")
+        except ProfileError as e:
+            print(e)
+            sys.exit(2)
+        self.profile_text = dump(profile)
         self.rules = profile.get("screening_rules", [])
         self.cv_dir = (root / cfg["cv_dir"]).resolve()
         self.cvs = cfg["cvs"]

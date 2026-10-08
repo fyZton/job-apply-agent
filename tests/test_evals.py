@@ -82,7 +82,7 @@ def test_evals_can_fail(monkeypatch):
 def test_profile_is_loaded_lazily():
     assert not hasattr(evals, "PROFILE_TEXT") and not hasattr(evals, "PROFILE")
     text, profile = evals.load_profile()
-    assert "years_of_experience" in profile and text.strip()
+    assert profile["facts"] and text.strip()
 
 
 def test_production_code_does_not_import_mock():

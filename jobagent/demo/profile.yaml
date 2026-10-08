@@ -1,4 +1,5 @@
 # Fictional candidate for the demo.
+version: 2
 first_name: Alex
 last_name: Example
 email: alex@example.com
@@ -7,11 +8,11 @@ city: Caracas
 country: Venezuela
 linkedin: https://www.linkedin.com/in/alex-example
 work_mode: 100% remote only.
-english: B2
-years_of_experience:
-  software_development: 3
-  python: 3
-  sql: 2
+facts:
+  - {id: skill.software-development, kind: skill, name: Software development, years: 3}
+  - {id: skill.python, kind: skill, name: Python, years: 3}
+  - {id: skill.sql, kind: skill, name: SQL, years: 2}
+  - {id: lang.english, kind: language, name: English, level: B2}
 summary: >
   I build backend services and API integrations in Python, and I like turning manual processes into
   automated ones.

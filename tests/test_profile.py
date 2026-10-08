@@ -53,6 +53,12 @@ def test_migration_never_rewrites_the_file(tmp_path):
     assert path.read_text(encoding="utf-8") == V1.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("path", [ROOT / "profile.example.yaml", ROOT / "jobagent" / "demo" / "profile.yaml"])
+def test_shipped_profiles_are_valid_v2(path):
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["version"] == 2
+    assert prof.validate(prof.load_profile(path)) == []
+
+
 def test_valid_profile_has_no_errors():
     assert prof.validate(base()) == []
 
@@ -122,3 +128,14 @@ def test_dump_leaves_sensitive_keys_out():
     text = prof.dump(data)
     assert "X123" not in text and "1990" not in text and "Caracas" in text
     assert yaml.safe_load(text)["first_name"] == "Alex"
+
+
+def test_run_exits_2_and_prints_every_message_for_a_bad_profile(tmp_path, capsys):
+    from jobagent.cli import Run
+
+    (tmp_path / "profile.yaml").write_text("version: 3\nfirst_name: Alex\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        Run({"llm": {}}, True, root=tmp_path, data=tmp_path)
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    assert "newer jobagent" in out and "last_name" in out and "email" in out

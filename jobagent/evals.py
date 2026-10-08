@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 
 from jobagent import llm
+from jobagent import profile as profiles
 from jobagent.core import Offer
 from jobagent.forms import FormAssistant
 from jobagent.safety import looks_injected
@@ -34,9 +35,9 @@ class EvalsError(Exception):
 
 @functools.cache
 def load_profile():
-    """(text, parsed) of the demo candidate profile the cases are written for."""
-    text = PROFILE_PATH.read_text(encoding="utf-8")
-    return text, yaml.safe_load(text)
+    """(prompt text, parsed) of the demo candidate profile the cases are written for."""
+    profile = profiles.load_profile(PROFILE_PATH)
+    return profiles.dump(profile), profile
 
 
 def load_cases(cases_dir):

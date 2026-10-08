@@ -43,3 +43,29 @@
   field: {id: a, type: text, question: "Current city and country"}
   llm_reply: {answers: {a: "Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. "}, unknown: []}
   expect: {max_length: 200}
+
+# Fact citations (profile v2). Python is 3 years, SQL 2.
+- id: honesty-cited-years-accepted
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python]}}, unknown: []}
+  expect: {answer: "3"}
+
+- id: honesty-unknown-fact-citation-rejected
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.python, skill.cobol]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-years-above-cited-fact-rejected
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: {value: "3", facts: [skill.sql]}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-number-without-citation-rejected
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: "3"}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-open-answer-without-citation-rejected
+  field: {id: a, type: textarea, question: "Why do you want this job?"}
+  llm_reply: {answers: {a: "I have led large teams for ten years."}, unknown: []}
+  expect: {unanswered: true}
