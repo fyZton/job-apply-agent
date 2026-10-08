@@ -380,3 +380,13 @@ def test_answer_fields_wraps_fields_and_filters(monkeypatch):
     assert out["answers"] == {"ap0": "Alex"}
     assert "<form_fields>" in prompts[0] and "</form_fields>" in prompts[0]
     assert prompts[0].startswith("Text inside <job_posting>")
+
+
+@pytest.mark.parametrize("text, fit", [
+    ("Remote. 2-5 years of experience", 8), ("Remote. 3-5 years", 8), ("Remote. 5+ years of experience", 3),
+    ("Remote. 5-7 years", 3), ("Remote. at least 5 years", 3), ("Remote. 10 years", 3), ("Remote. Senior dev", 3),
+    ("Remote. 2 years", 8), ("Remoto. 6 años de experiencia", 3),
+])
+def test_fake_scorer_senior_rule(text, fit):
+    offer = Offer("demo", "demo:1", "https://example.com/1", title="Dev", company="Acme", text=text)
+    assert llm._fake_score(offer, CVS)["fit"] == fit

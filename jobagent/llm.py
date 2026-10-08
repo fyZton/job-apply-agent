@@ -292,8 +292,11 @@ def _without_sensitive(profile_text):
     return yaml.safe_dump(_strip_sensitive(data), allow_unicode=True, sort_keys=False)
 
 
-def answer_fields(fields, profile_text, offer, model):
-    """Returns {"answers": {id: value}, "unknown": [ids]} or None."""
+def answer_fields(fields, profile_text, offer, model, raw=None):
+    """Returns {"answers": {id: value}, "unknown": [ids]} or None.
+
+    `raw`, if given, stands in for the model reply (the evals use it to test validation); it still goes
+    through validate_answers."""
     prompt = f"""{DATA_RULE}
 
 You are a candidate's application assistant. Answer the fields of an application form
@@ -324,7 +327,8 @@ Rules:
 - Leave out optional fields that don't apply.
 
 Reply ONLY with JSON: {{"answers": {{"<id>": <value>}}, "unknown": ["<id>"]}}"""
-    raw = _fake_answers(fields, profile_text) if backend() == "fake" else ask_json(prompt, model)
+    if raw is None:
+        raw = _fake_answers(fields, profile_text) if backend() == "fake" else ask_json(prompt, model)
     return validate_answers(raw, fields)
 
 
@@ -334,7 +338,8 @@ Reply ONLY with JSON: {{"answers": {{"<id>": <value>}}, "unknown": ["<id>"]}}"""
 def _fake_score(offer, cvs):
     text = offer.text
     onsite = re.search(r"on-site|onsite|hybrid|presencial|h[ií]brido", text, re.I)
-    senior = re.search(r"\bsenior\b|\b([5-9]|\d{2})\+?\s*(years|años)", text, re.I)
+    # 5 or more years as the minimum: "2-5 years" is not senior, "5-7 years" and "5+ years" are
+    senior = re.search(r"\bsenior\b|(?<![\d-])([5-9]|\d{2})\+?(\s*-\s*\d+)?\s*(years|años)", text, re.I)
     spanish = re.search(r"\b(desarrollador|remoto|experiencia|buscamos|empresa)\b", text, re.I)
     cv = next((c["file"] for c in cvs if spanish and "spanish" in c["use_for"].lower()), cvs[0]["file"])
     fit, reason = (2, "on-site") if onsite else (3, "too senior") if senior else (8, "remote and matching keywords")

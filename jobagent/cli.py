@@ -301,24 +301,41 @@ def demo(headless=False, dry_run=False):
     return run
 
 
-def eval_mode(live):
-    """Runs the eval suites and writes a report. Returns the process exit code."""
+LIVE_MIN_PASS_RATE = 0.9
+
+
+def eval_mode(live, cfg=None):
+    """Runs the eval suites and writes a report. Returns the process exit code.
+
+    Offline: 1 if any case fails. Live: 1 if the overall pass rate is under evals.live_min_pass_rate
+    (default 0.9), if nothing ran, or if the run was cut short by the budget."""
     if live:
         if os.environ.get("JOBAGENT_LLM") == "fake":
             sys.exit("--live needs a real backend: unset JOBAGENT_LLM or set it to claude or api.")
-        llm.configure(yaml.safe_load(load_yaml("config.yaml")).get("llm", {}))
-    else:
-        llm.configure({})
-    results = evals.run(evals.CASES_DIR, live=live)
-    json_path, md_path = evals.write_report(results, DATA_DIR / "evals", "live" if live else "offline")
+        cfg = cfg if cfg is not None else yaml.safe_load(load_yaml("config.yaml"))
+        threshold = (cfg.get("evals") or {}).get("live_min_pass_rate", LIVE_MIN_PASS_RATE)
+    try:
+        llm.configure(cfg.get("llm", {}) if live else {})
+        results = evals.run(evals.CASES_DIR, live=live)
+        skipped = evals.skipped_count(evals.CASES_DIR, live=live)
+    except (evals.EvalsError, llm.ConfigError) as e:
+        print(f"Cannot run the evals: {e}")
+        return 1
+    json_path, md_path = evals.write_report(results, DATA_DIR / "evals", "live" if live else "offline", skipped)
     for suite, s in evals.summarize(results).items():
         print(f"{suite}: {s['passed']}/{s['total']} ({s['rate']:.0%})")
+    if skipped:
+        print(f"Skipped {skipped} cases that force a model reply (offline only).")
     for r in results:
         if not r["passed"]:
             print(f"FAILED {r['suite']}/{r['id']}: {r['detail']}")
     print(llm.usage_summary())
     print(f"Report: {md_path} and {json_path.name}")
-    return 0 if live or all(r["passed"] for r in results) else 1
+    if not live:
+        return 0 if all(r["passed"] for r in results) else 1
+    rate = evals.overall_rate(results)
+    print(f"Overall pass rate {rate:.0%} (minimum {threshold:.0%})")
+    return 0 if results and rate >= threshold and not any("budget" in r["detail"] for r in results) else 1
 
 
 def main():

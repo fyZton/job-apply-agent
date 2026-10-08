@@ -33,7 +33,7 @@ def assistant(tmp_path):
 def fake_llm(monkeypatch, reply):
     calls = []
 
-    def answer_fields(fields, *args):
+    def answer_fields(fields, *args, **kw):
         calls.append([f["id"] for f in fields])
         return reply
 
@@ -187,3 +187,15 @@ def test_injected_form_goes_to_manual_without_llm(assistant, monkeypatch, bad):
     answers, missing = assistant.decide(fields, OFFER)
     assert answers == {} and missing and calls == []
     assert logs and "instruction" in logs[0].lower()
+
+
+def test_forced_reply_is_passed_to_the_llm_call(tmp_path, monkeypatch):
+    seen = {}
+    reply = {"answers": {}, "unknown": []}
+    monkeypatch.setattr(llm, "answer_fields", lambda fields, *a, **kw: seen.update(kw) or reply)
+    FormAssistant(PROFILE, "name: Alex", tmp_path, "m", print, forced_reply={"answers": {}}).decide(
+        [field("a", "Referral code")], OFFER)
+    assert seen == {"raw": {"answers": {}}}
+    seen.clear()
+    FormAssistant(PROFILE, "name: Alex", tmp_path, "m", print).decide([field("a", "Referral code")], OFFER)
+    assert seen == {}

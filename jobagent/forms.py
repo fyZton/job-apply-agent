@@ -145,11 +145,12 @@ def _empty(field):
 
 
 class FormAssistant:
-    def __init__(self, profile, profile_text, data_dir, model, log):
+    def __init__(self, profile, profile_text, data_dir, model, log, forced_reply=None):
         self.profile = profile
         self.profile_text = profile_text
         self.model = model
         self.log = log
+        self.forced_reply = forced_reply  # evals only: stands in for the model's reply
         self.cache_path = Path(data_dir) / "learned_answers.json"
         try:
             self.cache = json.loads(self.cache_path.read_text(encoding="utf-8"))
@@ -225,7 +226,8 @@ class FormAssistant:
             else:
                 pending.append(f)
         if pending:
-            r = llm.answer_fields(pending, self.profile_text, offer, self.model)
+            extra = {} if self.forced_reply is None else {"raw": self.forced_reply}
+            r = llm.answer_fields(pending, self.profile_text, offer, self.model, **extra)
             if r is None:
                 return answers, missing + [f["question"] for f in pending if f["required"]] or [
                     "(the LLM did not answer)"]
