@@ -74,6 +74,17 @@ def is_sensitive(text):
     return bool(SENSITIVE_FIELD.search(_fold(text).replace("_", " ")))
 
 
+def strip_sensitive(node):
+    """A copy of parsed YAML without keys about ids, banking, passwords or birth dates, and without
+    fixed-answer rules whose pattern asks for them."""
+    if isinstance(node, dict):
+        return {k: strip_sensitive(v) for k, v in node.items() if not is_sensitive(k)}
+    if isinstance(node, list):
+        return [strip_sensitive(v) for v in node
+                if not (isinstance(v, dict) and is_sensitive(str(v.get("pattern", ""))))]
+    return node
+
+
 def looks_injected(text):
     """Names of the injection patterns found in `text` (empty list if none)."""
     raw = "" if text is None else str(text)

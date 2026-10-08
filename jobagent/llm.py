@@ -18,7 +18,14 @@ import tempfile
 
 import yaml
 
-from jobagent.safety import DATA_RULE, is_sensitive, validate_answers, validate_score, wrap_fields, wrap_posting
+from jobagent.safety import (
+    DATA_RULE,
+    strip_sensitive,
+    validate_answers,
+    validate_score,
+    wrap_fields,
+    wrap_posting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -272,15 +279,6 @@ Reply ONLY with JSON:
     return validate_score(raw, [c["file"] for c in cvs])
 
 
-def _strip_sensitive(node):
-    if isinstance(node, dict):
-        return {k: _strip_sensitive(v) for k, v in node.items() if not is_sensitive(k)}
-    if isinstance(node, list):
-        return [_strip_sensitive(v) for v in node
-                if not (isinstance(v, dict) and is_sensitive(str(v.get("pattern", ""))))]
-    return node
-
-
 def _without_sensitive(profile_text):
     """The profile as YAML minus keys (and fixed-answer rules) about ids, banking, passwords or birth dates."""
     try:
@@ -289,7 +287,7 @@ def _without_sensitive(profile_text):
         data = None
     if not isinstance(data, dict):
         return "(profile unavailable)"
-    return yaml.safe_dump(_strip_sensitive(data), allow_unicode=True, sort_keys=False)
+    return yaml.safe_dump(strip_sensitive(data), allow_unicode=True, sort_keys=False)
 
 
 def answer_fields(fields, profile_text, offer, model, raw=None):

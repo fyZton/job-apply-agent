@@ -1,0 +1,50 @@
+# Version 1 profile (before facts), kept to test the migration. Fictional candidate.
+
+first_name: Alex
+last_name: Example
+email: alex@example.com
+phone: "+58 400 000 0000"
+city: Caracas
+country: Venezuela
+timezone: UTC-4
+linkedin: https://www.linkedin.com/in/alex-example
+github: https://github.com/alex-example
+
+degree: B.Sc. Computer Science, 2023
+english: B2, works day to day in English.
+spanish: Native
+
+work_mode: 100% remote only.
+open_to_contractor: yes
+needs_visa_sponsorship: no
+available_to_start: 2 weeks
+expected_salary_usd_monthly: 1800
+
+# Real years. Anything not listed here is answered as 0.
+years_of_experience:
+  software_development: 3
+  python: 3
+  sql: 2
+  rest_apis_and_integrations: 2
+  docker: 1
+
+summary: >
+  Developer focused on backend and integrations: REST APIs, webhooks and automation.
+
+# Extra rules for scoring offers (passed to the LLM as-is).
+screening_rules:
+  - Only accepts 100% remote work. On-site or hybrid offers (any city) get fit 1.
+  - If the offer requires living in a country that excludes Venezuela, fit 1.
+  - Offers that require relocation get fit 1.
+  - Offers that ask for 5+ years of experience get fit at most 3.
+
+# Answers without LLM. "pattern" is a regex over the question; the first match wins.
+fixed_answers:
+  - {pattern: "e-?mail|correo", value: "alex@example.com"}
+  - {pattern: "phone|teléfono|telefono|celular", value: "4000000000"}
+  - {pattern: 'first name|^\s*nombre\s*\*?\s*$', value: "Alex"}
+  - {pattern: "last name|surname|apellido", value: "Example"}
+  - {pattern: "linkedin", value: "https://www.linkedin.com/in/alex-example"}
+  - {pattern: "github|portfolio|portafolio|website", value: "https://github.com/alex-example"}
+  - {pattern: "sponsorship|patrocinio", value: "No"}
+  - {pattern: "relocat|reubica|mudarse", value: "No"}
