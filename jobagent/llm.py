@@ -1,6 +1,12 @@
 """LLM access: Claude Code CLI (`claude -p`, no API key), the Anthropic API (optional extra) or a fake.
 
 Every reply goes through jobagent.safety validation before the rest of the agent sees it.
+
+Errors are typed so the caller can tell them apart from an unparseable reply (which is just None):
+  ConfigError    credentials, package, model name or pricing are wrong: abort the whole run
+  BudgetExceeded the run hit max_cost_usd_per_run or max_calls_per_run: abort the whole run
+  LLMTransient   rate limit, 5xx, network or timeout: worth retrying later
+  LLMError       anything else the backend rejected (e.g. a bad request): not retried
 """
 import json
 import logging
@@ -20,17 +26,32 @@ DEFAULTS = {
     "backend": "claude",
     "api_models": {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"},
     "prices_usd_per_mtok": {"claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.0, 10.0]},
-    "max_cost_usd_per_run": 1.0,
+    "max_cost_usd_per_run": 1.0,  # null in config.yaml turns the cost limit off
+    "max_calls_per_run": 300,  # null turns the call cap off
 }
 FALLBACK_MODEL = "claude-sonnet-5-5"  # the only model that uses the server-side refusal fallback beta
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+NULLABLE = ("max_cost_usd_per_run", "max_calls_per_run")  # an explicit null disables the limit
+ESTIMATED_OUTPUT_TOKENS = 1000  # floor used when the CLI reports no usage
 
-_cfg = dict(DEFAULTS)
+_cfg = {k: dict(v) if isinstance(v, dict) else v for k, v in DEFAULTS.items()}
 USAGE = {}
 
 
-class BudgetExceeded(Exception):
-    """The run spent more than llm.max_cost_usd_per_run."""
+class LLMError(Exception):
+    """The backend rejected or failed the request."""
+
+
+class ConfigError(LLMError):
+    """Wrong credentials, missing package, unknown model or unpriced model: nothing will work until fixed."""
+
+
+class BudgetExceeded(LLMError):
+    """The run spent more than llm.max_cost_usd_per_run or made more than llm.max_calls_per_run calls."""
+
+
+class LLMTransient(LLMError):
+    """Rate limit, server error, network failure or timeout."""
 
 
 def reset_usage():
@@ -39,20 +60,56 @@ def reset_usage():
 
 
 def configure(llm_cfg):
-    """Applies the `llm:` section of config.yaml and resets the usage counter."""
+    """Applies the `llm:` section of config.yaml and resets the usage counter.
+
+    Nested dicts are merged with the defaults. A null is ignored, except for the two budget limits, where it
+    switches the limit off."""
     global _cfg
-    _cfg = {**DEFAULTS, **{k: v for k, v in (llm_cfg or {}).items() if v is not None}}
+    merged = {k: dict(v) if isinstance(v, dict) else v for k, v in DEFAULTS.items()}
+    for key, value in (llm_cfg or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key].update(value)
+        elif value is not None or key in NULLABLE:
+            merged[key] = value
+    _cfg = merged
     reset_usage()
+    if backend() != "fake":
+        for alias in (_cfg.get("score_model"), _cfg.get("form_model")):
+            if alias:
+                _price(model_id(alias))
 
 
 def backend():
     return os.environ.get("JOBAGENT_LLM") or _cfg["backend"]
 
 
+def model_id(model):
+    """Maps an alias ("haiku", "sonnet") to the model ID through llm.api_models."""
+    return _cfg["api_models"].get(model, model)
+
+
+def _price(model):
+    try:
+        return _cfg["prices_usd_per_mtok"][model]
+    except KeyError:
+        raise ConfigError(f"No price for model {model!r}: add it to llm.prices_usd_per_mtok "
+                          f"([input, output] USD per million tokens)") from None
+
+
+def _check_budget():
+    """Raises BudgetExceeded before a call if the run is already over its cost or call limit."""
+    limit, cap = _cfg["max_cost_usd_per_run"], _cfg["max_calls_per_run"]
+    if limit is not None and USAGE["cost_usd"] > limit:
+        raise BudgetExceeded(f"LLM cost ${USAGE['cost_usd']:.2f} is over the ${limit:.2f} limit for this run")
+    if cap is not None and USAGE["calls"] >= cap:
+        raise BudgetExceeded(f"{USAGE['calls']} LLM calls reached the limit of {cap} calls for this run")
+
+
 def _record(model, input_tokens, output_tokens, cost=None):
     """Adds one call to USAGE and raises BudgetExceeded when the run is over budget."""
+    model = model_id(model)
     if cost is None:
-        price_in, price_out = _cfg["prices_usd_per_mtok"].get(model, (0, 0))
+        price_in, price_out = _price(model)
         cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
     per_model = USAGE["by_model"].setdefault(model, dict(calls=0, input_tokens=0, output_tokens=0, cost_usd=0.0))
     for d in (USAGE, per_model):
@@ -81,23 +138,33 @@ def _claude_exe():
         path = shutil.which(name)
         if path:
             return path
-    raise RuntimeError('Claude Code ("claude" command) not found. Is it installed?')
+    raise ConfigError('Claude Code ("claude" command) not found. Is it installed?')
 
 
 def _call_claude(prompt, model):
-    r = subprocess.run(
-        [_claude_exe(), "-p", "--model", model, "--tools", "", "--no-session-persistence",
-         "--output-format", "json"],
-        input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=tempfile.gettempdir(), timeout=300,
-    )
+    try:
+        r = subprocess.run(
+            [_claude_exe(), "-p", "--model", model, "--tools", "", "--no-session-persistence",
+             "--output-format", "json"],
+            input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=tempfile.gettempdir(), timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("claude CLI timed out after 300 s")
+        raise LLMTransient("claude CLI timed out") from None
     try:
         data = json.loads(r.stdout)
         text = data["result"]
         usage = data.get("usage") or {}
     except (json.JSONDecodeError, KeyError, TypeError):
-        _record(model, 0, 0, cost=0.0)  # plain text: count the call, tokens unknown
-        return r.stdout
+        data, text, usage = {}, r.stdout, None
+    if r.returncode != 0 or data.get("is_error"):
+        logger.warning("claude CLI failed (exit %s): %s", r.returncode, (r.stderr or str(text)).strip()[:300])
+        raise LLMError(f"claude CLI failed (exit {r.returncode})")
+    if usage is None:  # plain text: tokens unknown, so estimate from the sizes instead of counting $0
+        logger.warning("claude CLI output was not JSON; estimating the cost from the prompt size")
+        _record(model, len(prompt) // 4, max(len(text) // 4, ESTIMATED_OUTPUT_TOKENS))
+        return text
     tokens_in = sum(usage.get(k) or 0 for k in
                     ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
     _record(model, tokens_in, usage.get("output_tokens") or 0, cost=data.get("total_cost_usd"))
@@ -108,25 +175,35 @@ def _call_api(prompt, model):
     try:
         import anthropic
     except ImportError:
-        raise RuntimeError("The API backend needs the Anthropic SDK: pip install 'jobagent[api]'") from None
-    model_id = _cfg["api_models"].get(model, model)
+        raise ConfigError("The API backend needs the Anthropic SDK: pip install 'jobagent[api]'") from None
+    model_name = model_id(model)
     client = anthropic.Anthropic().with_options(timeout=120.0, max_retries=2)
-    kwargs = dict(model=model_id, max_tokens=4000, messages=[{"role": "user", "content": prompt}],
+    kwargs = dict(model=model_name, max_tokens=4000, messages=[{"role": "user", "content": prompt}],
                   output_config={"effort": "low"})
     try:
-        if model_id == FALLBACK_MODEL:
+        if model_name == FALLBACK_MODEL:
             response = client.beta.messages.create(**kwargs, betas=[FALLBACK_BETA], fallbacks="default")
         else:
             response = client.messages.create(**kwargs)
-    except anthropic.AuthenticationError:
-        raise RuntimeError("Anthropic credentials missing or invalid: set ANTHROPIC_API_KEY") from None
-    except (anthropic.RateLimitError, anthropic.APIStatusError, anthropic.APIConnectionError) as e:
-        logger.warning("Anthropic API error: %s", type(e).__name__)
-        return None
+    except anthropic.APIConnectionError as e:
+        logger.warning("Anthropic API connection error: %s", type(e).__name__)
+        raise LLMTransient(f"Anthropic API connection error ({type(e).__name__})") from None
+    except anthropic.APIStatusError as e:
+        code = getattr(e, "status_code", 0)
+        logger.warning("Anthropic API error %s: %s", code, str(getattr(e, "message", e))[:200])
+        if code in (401, 403):
+            raise ConfigError(f"Anthropic API refused the credentials (HTTP {code}): "
+                              "set a valid ANTHROPIC_API_KEY") from None
+        if code == 404:
+            raise ConfigError(f"Anthropic API does not know the model {model_name!r} (HTTP 404): "
+                              "check llm.api_models") from None
+        if code == 429 or code >= 500:
+            raise LLMTransient(f"Anthropic API error (HTTP {code})") from None
+        raise LLMError(f"Anthropic API rejected the request (HTTP {code})") from None
     u = response.usage
     tokens_in = sum(getattr(u, k, None) or 0 for k in
                     ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
-    _record(model_id, tokens_in, u.output_tokens or 0)
+    _record(model_name, tokens_in, u.output_tokens or 0)
     if response.stop_reason == "refusal":
         logger.warning("The model refused the request")
         return None
@@ -134,13 +211,9 @@ def _call_api(prompt, model):
 
 
 def _complete(prompt, model):
-    """Sends the prompt to the configured backend and returns the raw text, or None."""
-    if backend() == "api":
-        return _call_api(prompt, model)
-    try:
-        return _call_claude(prompt, model)
-    except subprocess.TimeoutExpired:
-        return None
+    """Sends the prompt to the configured backend and returns the raw text, or None if the model refused."""
+    _check_budget()
+    return _call_api(prompt, model) if backend() == "api" else _call_claude(prompt, model)
 
 
 def extract_json(text):

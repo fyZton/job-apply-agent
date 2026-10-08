@@ -95,3 +95,35 @@ def test_run_all_stops_when_budget_is_exceeded(monkeypatch, tmp_path):
     cli.run_all(FakeRun(), ["demo", "demo"], ctx)
     assert seen == ["demo"]  # the second board is never started
     assert "over the $1.00 limit" in next((tmp_path / "logs").glob("*.log")).read_text(encoding="utf-8")
+
+
+def log_text(folder):
+    return next((folder / "logs").glob("*.log")).read_text(encoding="utf-8")
+
+
+def test_transient_llm_errors_count_as_failures_and_stop_after_three(monkeypatch, tmp_path):
+    monkeypatch.setenv("JOBAGENT_LLM", "fake")
+    monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm, "score_offer", lambda *a: (_ for _ in ()).throw(llm.LLMTransient("429")))
+    run = demo(headless=True)
+    assert "Claude is not answering" in log_text(tmp_path)
+    assert run.llm_failures == 3
+
+
+def test_config_error_aborts_the_whole_run(monkeypatch, tmp_path):
+    monkeypatch.setenv("JOBAGENT_LLM", "fake")
+    monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm, "score_offer", lambda *a: (_ for _ in ()).throw(llm.ConfigError("bad key")))
+    run = demo(headless=True)
+    assert "bad key" in log_text(tmp_path) and "Stopping" in log_text(tmp_path)
+    assert run.tracker.history["seen"].get("demo:backend-python") is None
+
+
+@pytest.mark.parametrize("exc", [llm.BudgetExceeded("over"), llm.ConfigError("bad key")])
+def test_errors_from_the_form_step_are_not_swallowed(monkeypatch, tmp_path, exc):
+    monkeypatch.setenv("JOBAGENT_LLM", "fake")
+    monkeypatch.setattr(cli, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm, "answer_fields", lambda *a: (_ for _ in ()).throw(exc))
+    run = demo(headless=True)
+    assert "Stopping" in log_text(tmp_path)
+    assert run.summary["demo", "error"] == 0

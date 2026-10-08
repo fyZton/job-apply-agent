@@ -26,7 +26,8 @@ llm:
   prices_usd_per_mtok:      # [input, output] per million tokens, used to estimate the cost
     claude-haiku-5-5: [0.10, 0.50]
     claude-sonnet-5-5: [2.0, 10.0]
-  max_cost_usd_per_run: 1.0 # the run stops when the estimated cost goes above this
+  max_cost_usd_per_run: 1.0 # the run stops when the estimated cost goes above this; null = no limit
+  max_calls_per_run: 300    # hard cap on LLM calls per run; null = no cap
 
 excel: data/applications.xlsx
 cv_dir: cv

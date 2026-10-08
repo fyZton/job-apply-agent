@@ -169,7 +169,13 @@ class Run:
             self.flag_suspicious(site, mod, offer, ", ".join(reasons))
             return
 
-        ev = llm.score_offer(offer, self.profile_text, self.cvs, self.rules, self.cfg["llm"]["score_model"])
+        try:
+            ev = llm.score_offer(offer, self.profile_text, self.cvs, self.rules, self.cfg["llm"]["score_model"])
+        except (llm.BudgetExceeded, llm.ConfigError):
+            raise
+        except llm.LLMError as e:
+            log(f"{mod.LABEL}: LLM error ({type(e).__name__}): {e}")
+            ev = None
         if ev is None:
             self.llm_failures += 1
             if self.llm_failures >= 3:
@@ -191,7 +197,7 @@ class Run:
         cv_path = self.cv_dir / cv_name
         try:
             result, note = mod.apply(page, offer, cv_path, self.assistant, self.dry_run)
-        except SessionExpired:
+        except (SessionExpired, llm.BudgetExceeded, llm.ConfigError, StopRequested):
             raise
         except Exception as e:
             result, note = "error", f"{type(e).__name__}: {str(e)[:150]}"
@@ -239,6 +245,9 @@ def run_all(run, sites, ctx):
             break
         except llm.BudgetExceeded as e:
             log(f"{e}. Stopping.")
+            break
+        except llm.ConfigError as e:
+            log(f"LLM configuration problem: {e}. Stopping.")
             break
         except Exception as e:
             log(f"{label}: unexpected error, moving to the next board: {type(e).__name__}: {e}")

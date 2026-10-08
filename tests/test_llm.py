@@ -24,7 +24,7 @@ def clean(monkeypatch):
 # ---- fake anthropic SDK ----------------------------------------------------------------------------
 
 class APIError(Exception):
-    pass
+    status_code = None
 
 
 class APIConnectionError(APIError):
@@ -32,7 +32,9 @@ class APIConnectionError(APIError):
 
 
 class APIStatusError(APIError):
-    pass
+    def __init__(self, message="", status_code=500):
+        super().__init__(message)
+        self.message, self.status_code = message, status_code
 
 
 class AuthenticationError(APIStatusError):
@@ -100,7 +102,7 @@ def test_api_sonnet_uses_beta_fallback(sdk):
 
 
 def test_api_models_come_from_config(sdk):
-    llm.configure({"api_models": {"haiku": "my-model"}})
+    llm.configure({"api_models": {"haiku": "my-model"}, "prices_usd_per_mtok": {"my-model": [1, 2]}})
     llm._complete("hi", "haiku")
     assert sdk.calls[0][1]["model"] == "my-model"
 
@@ -143,7 +145,7 @@ def test_budget_exceeded_raises(sdk):
 def test_missing_package_message(monkeypatch):
     monkeypatch.setitem(sys.modules, "anthropic", None)
     monkeypatch.setenv("JOBAGENT_LLM", "api")
-    with pytest.raises(RuntimeError, match=r"pip install 'jobagent\[api\]'"):
+    with pytest.raises(llm.ConfigError, match=r"pip install 'jobagent\[api\]'"):
         llm._complete("hi", "haiku")
 
 
@@ -154,16 +156,108 @@ def test_env_overrides_config_backend(monkeypatch):
     assert llm.backend() == "fake"
 
 
-@pytest.mark.parametrize("error", [RateLimitError("429"), APIStatusError("500"), APIConnectionError("net")])
-def test_api_errors_return_none(sdk, error):
+@pytest.mark.parametrize("error", [RateLimitError("slow down", 429), APIStatusError("boom", 503),
+                                   APIStatusError("boom", 500), APIConnectionError("net")])
+def test_transient_api_errors_are_typed_and_logged(sdk, error, caplog):
     sdk.error = error
-    assert llm._complete("hi", "haiku") is None
+    with pytest.raises(llm.LLMTransient):
+        llm._complete("hi", "haiku")
+    assert "Anthropic API" in caplog.text
+
+
+@pytest.mark.parametrize("code", [401, 403, 404])
+def test_config_api_errors_abort(sdk, code, caplog):
+    sdk.error = APIStatusError("nope", code)
+    with pytest.raises(llm.ConfigError, match=str(code)):
+        llm._complete("hi", "haiku")
+    assert str(code) in caplog.text
+
+
+def test_bad_request_is_not_retried_or_transient(sdk):
+    sdk.error = APIStatusError("bad", 400)
+    with pytest.raises(llm.LLMError) as e:
+        llm._complete("hi", "haiku")
+    assert not isinstance(e.value, llm.LLMTransient | llm.ConfigError)
 
 
 def test_api_auth_error_is_explicit(sdk):
-    sdk.error = AuthenticationError("bad key")
-    with pytest.raises(RuntimeError, match="credentials"):
+    sdk.error = AuthenticationError("bad key", 401)
+    with pytest.raises(llm.ConfigError, match="ANTHROPIC_API_KEY"):
         llm._complete("hi", "haiku")
+
+
+def test_api_error_log_never_contains_the_key(sdk, monkeypatch, caplog):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret")
+    sdk.error = APIStatusError("overloaded", 529)
+    with pytest.raises(llm.LLMTransient):
+        llm._complete("hi", "haiku")
+    assert "sk-ant-secret" not in caplog.text
+
+
+def test_refusal_is_logged(sdk, caplog):
+    sdk.response = reply(stop="refusal")
+    assert llm._complete("hi", "haiku") is None
+    assert "refused" in caplog.text
+
+
+# ---- budget and pricing ---------------------------------------------------------------------------------
+
+def test_budget_checked_before_each_call(sdk):
+    sdk.response = reply(usage=SimpleNamespace(input_tokens=1_000_000, output_tokens=1_000_000))
+    llm.configure({"max_cost_usd_per_run": 0.5})
+    with pytest.raises(llm.BudgetExceeded):
+        llm._complete("hi", "haiku")
+    with pytest.raises(llm.BudgetExceeded):
+        llm._complete("hi", "haiku")
+    assert len(sdk.calls) == 1  # the second call never left the machine
+
+
+def test_max_calls_per_run_defaults_to_300_and_is_enforced(sdk):
+    assert llm._cfg["max_calls_per_run"] == 300
+    llm.configure({"max_calls_per_run": 2, "max_cost_usd_per_run": None})
+    llm._complete("a", "haiku")
+    llm._complete("b", "haiku")
+    with pytest.raises(llm.BudgetExceeded, match="calls"):
+        llm._complete("c", "haiku")
+
+
+def test_null_budget_disables_the_cost_limit(sdk):
+    sdk.response = reply(usage=SimpleNamespace(input_tokens=10_000_000, output_tokens=10_000_000))
+    llm.configure({"max_cost_usd_per_run": None})
+    llm._complete("hi", "sonnet")
+    assert llm.USAGE["cost_usd"] > 100
+
+
+def test_missing_budget_key_keeps_the_default():
+    llm.configure({"score_model": "haiku"})
+    assert llm._cfg["max_cost_usd_per_run"] == 1.0
+
+
+def test_configure_deep_merges_nested_dicts():
+    llm.configure({"api_models": {"haiku": "my-haiku"}, "prices_usd_per_mtok": {"my-haiku": [1, 2]}})
+    assert llm._cfg["api_models"] == {"haiku": "my-haiku", "sonnet": "claude-sonnet-5-5"}
+    assert llm._cfg["prices_usd_per_mtok"]["claude-sonnet-5-5"] == [2.0, 10.0]
+    assert llm._cfg["prices_usd_per_mtok"]["my-haiku"] == [1, 2]
+    assert llm.DEFAULTS["api_models"]["haiku"] == "claude-haiku-5-5"  # defaults are not mutated
+
+
+def test_unpriced_model_is_a_config_error_at_configure_time():
+    with pytest.raises(llm.ConfigError, match="my-model"):
+        llm.configure({"api_models": {"haiku": "my-model"}, "score_model": "haiku"})
+
+
+def test_unpriced_model_is_a_config_error_on_first_use(sdk):
+    llm.configure({"api_models": {"haiku": "my-model"}})
+    with pytest.raises(llm.ConfigError, match="my-model"):
+        llm._complete("hi", "haiku")
+
+
+def test_cli_alias_is_priced_through_api_models(monkeypatch):
+    out = json.dumps({"result": "{}", "usage": {"input_tokens": 1_000_000, "output_tokens": 0}})
+    run_claude(monkeypatch, out)
+    llm._complete("hi", "haiku")
+    assert llm.USAGE["cost_usd"] == pytest.approx(0.10)
+    assert "claude-haiku-5-5" in llm.USAGE["by_model"]
 
 
 # ---- claude CLI --------------------------------------------------------------------------------------
@@ -189,10 +283,43 @@ def test_claude_json_output_is_parsed(monkeypatch):
     assert llm.USAGE["cost_usd"] == pytest.approx(0.01) and llm.USAGE["output_tokens"] == 20
 
 
-def test_claude_plain_text_fallback(monkeypatch):
+def test_claude_plain_text_estimates_cost_and_warns(monkeypatch, caplog):
     run_claude(monkeypatch, 'sure: {"fit": 4}')
-    assert llm._complete("hi", "haiku") == 'sure: {"fit": 4}'
-    assert llm.USAGE["calls"] == 1
+    assert llm._complete("x" * 4_000_000, "haiku") == 'sure: {"fit": 4}'
+    assert llm.USAGE["calls"] == 1 and llm.USAGE["cost_usd"] > 0.09  # 1M estimated input tokens at $0.10
+    assert "not JSON" in caplog.text
+
+
+ERROR_JSON = json.dumps({"is_error": True, "result": "limit"})
+
+
+@pytest.mark.parametrize("returncode, stdout", [(1, ""), (1, "boom"), (0, ERROR_JSON)])
+def test_claude_failure_raises_typed_error_and_logs_stderr(monkeypatch, caplog, returncode, stdout):
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="usage limit reached " + "x" * 900)
+
+    monkeypatch.setattr(llm, "_claude_exe", lambda: "claude")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(llm.LLMError):
+        llm._complete("hi", "haiku")
+    assert "usage limit reached" in caplog.text and len(caplog.text) < 1000
+
+
+def test_claude_timeout_is_logged_and_transient(monkeypatch, caplog):
+    def fake_run(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 300)
+
+    monkeypatch.setattr(llm, "_claude_exe", lambda: "claude")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(llm.LLMTransient):
+        llm._complete("hi", "haiku")
+    assert "timed out" in caplog.text
+
+
+def test_claude_missing_is_a_config_error(monkeypatch):
+    monkeypatch.setattr(llm.shutil, "which", lambda name: None)
+    with pytest.raises(llm.ConfigError, match="not found"):
+        llm._complete("hi", "haiku")
 
 
 # ---- prompts and validation ---------------------------------------------------------------------------
