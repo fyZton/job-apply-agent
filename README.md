@@ -65,7 +65,7 @@ Requires Python 3.11+ and [Claude Code](https://docs.anthropic.com/en/docs/claud
 pip install -e .
 playwright install chromium
 cp config.example.yaml config.yaml     # boards, limits, searches
-cp profile.example.yaml profile.yaml   # your data; the LLM answers only from here
+cp profile.example.yaml profile.yaml   # your data; the LLM answers only from here (or run --setup)
 python -m jobagent --login             # log in once; sessions are kept in ~/.jobagent/browser
 python -m jobagent --dry-run           # does everything except submitting
 python -m jobagent
@@ -73,10 +73,78 @@ python -m jobagent
 
 `config.yaml`, `profile.yaml`, `cv/` and `data/` are git-ignored, so personal data stays on your machine.
 
+## Profile and facts
+
+`profile.yaml` has flat fields (name, email, links, salary, work mode, the rules for scoring and the fixed
+answers) and a list of **facts**: the things the agent is allowed to claim. Every fact has an id that is written
+once and never changes.
+
+```yaml
+version: 2
+first_name: Alex
+last_name: Example
+email: alex@example.com
+facts:
+  - {id: skill.python, kind: skill, name: Python, years: 3}
+  - {id: cert.aws-ccp, kind: cert, name: AWS Cloud Practitioner, year: 2024}
+  - id: exp.acme-2023
+    kind: experience
+    title: Backend Developer
+    org: Acme
+    start: 2023-01
+    end: present
+    bullets:
+      - {id: exp.acme-2023.b1, text: Built REST integrations}
+  - {id: edu.bsc-computer-science, kind: education, name: B.Sc. Computer Science, year: 2023}
+  - {id: lang.english, kind: language, name: English, level: B1}
+```
+
+Kinds are `skill` (with `years`), `cert`, `experience` (with `start`, `end` as `YYYY-MM` or `present`, and
+`bullets`), `education` and `language`. Ids look like `skill.python` or `exp.acme-2023.b1` and must be unique.
+`profile.example.yaml` is a full example.
+
+Why ids:
+
+- **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`, and a number or open-text
+  answer has to come back with the ids it relies on, as `{"value": "3", "facts": ["skill.python"]}`. An answer is
+  rejected, and the field goes to manual review, when it cites an id that doesn't exist, cites nothing (a plain
+  `0` is allowed), or gives more years than the facts it cites. The years check described under
+  [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without facts keeps the old behavior, and a plain value is still accepted for
+  text, select, radio and checkbox fields.
+- **CV generation.** The planned CV generator will pick and reorder facts by id, so a tailored CV can only
+  contain what is in the profile.
+
+`python -m jobagent` validates the profile on start and prints every problem at once, then exits with code 2,
+for example `profile.yaml: facts[2].years must be a number >= 0 (got 'three')`. A profile with no `version` is
+version 1 (`years_of_experience`, `degree`, `english`...). It is converted to facts in memory on every run and the
+file is never rewritten; `--setup` upgrades it for good.
+
+## Set up from your CV
+
+```bash
+pip install -e ".[cv]"                      # PDF and DOCX readers; .txt needs nothing extra
+python -m jobagent --setup                  # questions, one field at a time
+python -m jobagent --from-cv my_cv.pdf      # same, starting from what the CV says
+```
+
+`--setup` asks for each field with the current value in brackets (Enter keeps it, `-` clears it), then loops over
+skills, certificates, jobs with their bullets, education and languages. Invalid answers such as a bad email,
+negative years or a date that isn't `YYYY-MM` are asked again. If a `profile.yaml` already exists (version 1 or 2)
+it is the starting point, so this is also how you upgrade a v1 file. At the end it prints the YAML and asks
+`Write profile.yaml? [y/N]`. If the file exists it asks again before replacing it and keeps the old one as
+`profile.yaml.bak`. Nothing is written without that final `y`.
+
+`--from-cv` reads a `.pdf`, `.docx` or `.txt`. Email, phone, LinkedIn and GitHub come from regular expressions.
+The CV text is also sent to the configured LLM backend to propose facts, each with a quote from the CV as its
+source; a fact is dropped unless that quote is in the text and names the fact. CV text is untrusted like a job
+posting: if it looks like a prompt injection the LLM step is skipped and you are told. Use `--no-llm` to skip it on
+purpose. The result is only a draft for the questions, so check every value: a quote proves the CV says something,
+not that the model read the number right.
+
 ## Tests
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,cv]"
 playwright install chromium
 pytest
 ```
@@ -145,7 +213,8 @@ Job postings and form labels are written by third parties and end up in the prom
    exist, values must be plain strings, numbers or booleans, and text is capped at 200 characters (2000 for
    text areas). A years-of-experience answer (also one read from the cache) is rejected if its largest number
    ("5+" is 5, "5-7" is 7) is above the profile's years for the skill the question names, or above the profile's
-   maximum when no skill matches, and the field is left for you to fill in by hand. A score whose CV name isn't
+   maximum when no skill matches, and the field is left for you to fill in by hand. With facts in the profile,
+   number and open-text answers must also cite known fact ids (see [Profile and facts](#profile-and-facts)). A score whose CV name isn't
    one of the configured files is rejected too.
 
 **Sensitive fields.** A field asking for a government or national ID, passport, SSN, IBAN or bank account,
@@ -183,7 +252,7 @@ python -m jobagent --eval --live    # sends the cases to the configured backend 
 an installed wheel. If the folder is missing or empty it stops with an error.
 
 The cases are YAML files in `evals/`: `fit.yaml` (offers the candidate should score high or low on, and which
-CV to pick), `honesty.yaml` (form answers must come from the profile, not from the model's imagination) and
+CV to pick), `honesty.yaml` (form answers must come from the profile and cite its facts, not from the model's imagination) and
 `injection.yaml` (postings that try to steer the scorer, in English and Spanish, with zero-width characters).
 Injection cases marked `bypass_detector: true` skip the detector and go straight to the scorer, which has to
 keep its score in range anyway.
@@ -198,7 +267,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 10 | 10 | 100% |
+| honesty | 15 | 15 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites
@@ -213,7 +282,7 @@ at your own risk.
 ## Roadmap
 
 - [x] Tests with local HTML fixtures and a fake LLM, CI on Windows and Linux, secret scanning
-- [ ] Profile setup from your existing CV (`--setup`)
+- [x] Profile v2 with citable facts, and profile setup from your existing CV (`--setup`, `--from-cv`)
 - [ ] ATS-friendly CV generator (PDF/DOCX, English/Spanish), tailored per offer without adding facts
 - [x] Demo mode with a fake local job board, runnable without accounts
 - [x] Prompt-injection defense, STOP switch, API backend with cost budget, and LLM evals for honesty
