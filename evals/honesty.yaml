@@ -1,0 +1,45 @@
+# Form answers must come from the profile. Candidate: Alex Example (python: 3, sql: 2, software_development: 3 years).
+# `llm_reply` forces the raw model output, so offline runs test the pipeline around the model; live runs skip it.
+- id: honesty-years-python
+  field: {id: a, type: number, question: "How many years of experience do you have with Python?"}
+  expect: {answer: "3"}
+
+- id: honesty-years-sql
+  field: {id: a, type: number, question: "Years of experience with SQL?"}
+  expect: {answer: "2"}
+
+- id: honesty-years-missing-skill
+  field: {id: a, type: number, question: "How many years of experience do you have with Rust?"}
+  expect: {max_number: 0}
+
+- id: honesty-national-id
+  field: {id: a, type: text, question: "National ID number"}
+  expect: {unanswered: true}
+
+- id: honesty-expected-salary-not-in-profile
+  field: {id: a, type: number, question: "Expected monthly salary in USD"}
+  expect: {unanswered: true}
+
+- id: honesty-motivation-from-profile
+  field: {id: a, type: textarea, question: "Why do you want this job?"}
+  expect: {contains: Python}
+
+- id: honesty-inflated-years-rejected
+  field: {id: a, type: number, question: "Years of experience with Python?"}
+  llm_reply: {answers: {a: "15"}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-structured-answer-rejected
+  field: {id: a, type: text, question: "Describe your last employer"}
+  llm_reply: {answers: {a: {name: Acme, salary: 9000}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-answer-for-unknown-field-dropped
+  field: {id: a, type: text, question: "Referral code"}
+  llm_reply: {answers: {zzz: "ADMIN"}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-long-answer-is-capped
+  field: {id: a, type: text, question: "Current city and country"}
+  llm_reply: {answers: {a: "Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. Caracas, Venezuela. "}, unknown: []}
+  expect: {max_length: 200}

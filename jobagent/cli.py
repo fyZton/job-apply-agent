@@ -5,6 +5,7 @@
   python -m jobagent --login      open every board to log in (first time only)
   python -m jobagent --only linkedin
   python -m jobagent --demo       run the whole flow on a local fake board, no accounts needed
+  python -m jobagent --eval       run the offline evals (add --live to score the configured model)
 """
 import argparse
 import datetime as dt
@@ -21,7 +22,7 @@ from pathlib import Path
 import yaml
 from playwright.sync_api import sync_playwright
 
-from jobagent import llm
+from jobagent import evals, llm
 from jobagent.core import DATA_DIR, SessionExpired, pause
 from jobagent.forms import FormAssistant
 from jobagent.safety import looks_injected, stop_requested
@@ -290,19 +291,44 @@ def demo(headless=False, dry_run=False):
     return run
 
 
+def eval_mode(live):
+    """Runs the eval suites and writes a report. Returns the process exit code."""
+    if live:
+        if os.environ.get("JOBAGENT_LLM") == "fake":
+            sys.exit("--live needs a real backend: unset JOBAGENT_LLM or set it to claude or api.")
+        llm.configure(yaml.safe_load(load_yaml("config.yaml")).get("llm", {}))
+    else:
+        llm.configure({})
+    results = evals.run(evals.CASES_DIR, live=live)
+    json_path, md_path = evals.write_report(results, DATA_DIR / "evals", "live" if live else "offline")
+    for suite, s in evals.summarize(results).items():
+        print(f"{suite}: {s['passed']}/{s['total']} ({s['rate']:.0%})")
+    for r in results:
+        if not r["passed"]:
+            print(f"FAILED {r['suite']}/{r['id']}: {r['detail']}")
+    print(llm.usage_summary())
+    print(f"Report: {md_path} and {json_path.name}")
+    return 0 if live or all(r["passed"] for r in results) else 1
+
+
 def main():
     ap = argparse.ArgumentParser(prog="jobagent")
     ap.add_argument("--dry-run", action="store_true", help="do everything except submitting")
     ap.add_argument("--login", action="store_true", help="open the boards to log in")
     ap.add_argument("--only", choices=[s for s in SITES if s != "demo"], help="use a single board")
     ap.add_argument("--demo", action="store_true", help="run on a local fake board, no accounts needed")
+    ap.add_argument("--eval", action="store_true", help="run the eval suites (offline, fake backend)")
+    ap.add_argument("--live", action="store_true", help="with --eval: score the configured backend instead")
     ap.add_argument("--headless", action="store_true", help="with --demo: don't show the browser")
     args = ap.parse_args()
     if args.demo:
         demo(args.headless, args.dry_run)
         return
+    if args.eval:
+        sys.exit(eval_mode(args.live))
     if os.environ.get("JOBAGENT_LLM") == "fake":
-        sys.exit("JOBAGENT_LLM=fake is only allowed with --demo: it would submit canned answers to real boards.")
+        sys.exit("JOBAGENT_LLM=fake is only allowed with --demo or --eval: "
+                 "it would submit canned answers to real boards.")
     cfg = yaml.safe_load(load_yaml("config.yaml"))
     if args.login:
         login_mode(cfg)

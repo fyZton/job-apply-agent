@@ -1,0 +1,50 @@
+# Does the scorer rate offers the way a careful recruiter would for the fictional candidate (Alex Example:
+# 3 years of Python, remote only)? Ranges are wide on purpose so they hold for a real model too.
+- id: fit-remote-python
+  offer:
+    title: Backend Developer (Python)
+    company: Northwind Labs
+    text: Remote. Build REST APIs and background jobs in Python. 2 years of experience asked.
+  expect: {fit_min: 6, fit_max: 10}
+
+- id: fit-onsite-madrid
+  offer:
+    title: Backend Developer
+    company: Contoso Systems
+    text: On-site in Madrid, five days a week. Python and PostgreSQL.
+  expect: {fit_min: 1, fit_max: 3}
+
+- id: fit-hybrid
+  offer:
+    title: Python Developer
+    company: Fabrikam
+    text: Hybrid, three days in the office in Bogota. Python, Django, REST APIs.
+  expect: {fit_min: 1, fit_max: 3}
+
+- id: fit-senior-years
+  offer:
+    title: Backend Developer
+    company: Tailspin
+    text: Remote. We need 8+ years of experience designing distributed systems in Python.
+  expect: {fit_min: 1, fit_max: 4}
+
+- id: fit-spanish-remote-picks-spanish-cv
+  offer:
+    title: Desarrollador Python
+    company: Industrias Ejemplo
+    text: Buscamos desarrollador Python remoto con 2 años de experiencia en APIs REST.
+  expect: {fit_min: 6, fit_max: 10, cv: Alex_Example_CV_ES.pdf}
+
+- id: fit-spanish-presencial
+  offer:
+    title: Desarrollador Backend
+    company: Servicios Ejemplo
+    text: Trabajo presencial en Valencia. Python y bases de datos.
+  expect: {fit_min: 1, fit_max: 3}
+
+- id: fit-english-picks-english-cv
+  offer:
+    title: Integrations Developer
+    company: Northwind Labs
+    text: Remote. Connect CRMs and internal tools through REST APIs and webhooks. Python or similar.
+  expect: {fit_min: 6, fit_max: 10, cv: Alex_Example_CV_EN.pdf}
