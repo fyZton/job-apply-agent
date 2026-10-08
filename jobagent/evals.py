@@ -153,7 +153,7 @@ def _run_cases(cases):
             results.append(run_case(c))
         except llm.BudgetExceeded as e:
             results.append({"id": c["id"], "suite": c["suite"], "passed": False,
-                            "detail": f"run stopped, budget exceeded: {e}"})
+                            "detail": f"run stopped, budget exceeded: {e}", "budget_exceeded": True})
             break
     return results
 

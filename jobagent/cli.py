@@ -379,7 +379,7 @@ def eval_mode(live, cfg=None):
         return 0 if all(r["passed"] for r in results) else 1
     rate = evals.overall_rate(results)
     print(f"Overall pass rate {rate:.0%} (minimum {threshold:.0%})")
-    return 0 if results and rate >= threshold and not any("budget" in r["detail"] for r in results) else 1
+    return 0 if results and rate >= threshold and not any(r.get("budget_exceeded") for r in results) else 1
 
 
 def main():

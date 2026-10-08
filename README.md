@@ -117,7 +117,9 @@ Why ids:
   Any cited id that doesn't exist rejects the answer, and a rejected field goes to manual review. A version 2
   profile with no skill facts sends every years question to manual review and logs one warning. The years check
   described under [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without
-  facts keeps the old behavior, and select and radio fields need no citation but get the same years limit.
+  facts keeps the old behavior. Select, radio and checkbox fields need no citation, but a yes to them is checked: a years
+  threshold in the question (`at least 5 years`, `3+`, `más de 5 años`) must be within the same years limit, and a claim of
+  experience with something (`experience with X`, `familiar with X`, `experiencia con X`) must name a profile skill. A no always passes.
 - **CV generation.** The planned CV generator will pick and reorder facts by id, so a tailored CV can only
   contain what is in the profile.
 
@@ -246,12 +248,15 @@ Job postings and form labels are written by third parties and end up in the prom
 3. **Output validation.** Whatever the model returns is checked before use. A score must be an integer from 1 to
    10, and the CV name must be one of the configured files. Form answers are kept only for field ids that
    exist, values must be plain strings, numbers or booleans, and text is capped at 200 characters (2000 for
-   text areas). A years-of-experience answer (also one read from the cache, and also in select and radio
-   fields) is rejected if it is above the limit of the question: the profile's years for the skill it names, 0
+   text areas). A years-of-experience answer (also one read from the cache, and also in select, radio and
+   checkbox fields) is rejected if it is above the limit of the question: the profile's years for the skill it names, 0
    when it names something that is not in the profile, or the profile's best skill when it names nothing. For
    a number or text answer the largest number counts ("5+" is 5, "5-7" is 7); for a select or radio option its
    lower bound counts ("3-5" is 3, "Less than 1" is 0, "Más de 3" is 3). A rejected field is left for you to
-   fill in by hand. With facts in the profile,
+   fill in by hand. A select counts as a years question when its options contain years (`5+ years`). A yes to a
+   select, radio or checkbox is rejected when the question asks for more years than the limit ("more than N" needs N+1) or for
+   experience with something that is not a profile skill; a no is always accepted. A cached answer with no number is dropped.
+   With facts in the profile,
    a years-of-experience answer must also cite the skill fact it relies on (see
    [Profile and facts](#profile-and-facts)). A score whose CV name isn't one of the configured files is rejected too.
 

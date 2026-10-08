@@ -119,7 +119,24 @@ def _lower_bound(option):
     if re.search(r"less than|under|up to|menos de|hasta|<", text[:m.start()]):
         return 0.0
     return float(m.group().replace(",", "."))
+YES = {"yes", "y", "sí", "si", "true", "checked"}
+NO = {"no", "false", "0"}
+NUM = r"(\d+(?:[.,]\d+)?)"
+MORE_THAN = re.compile(r"(?:more than|over|m[aá]s de)\s*" + NUM, re.I)
+AT_LEAST = re.compile(r"(?:at least|minimum|m[ií]nimo)\s*" + NUM + r"|" + NUM + r"\s*\+?\s*(?:years?|yrs?|años?)\b", re.I)
+# "experience with X", "familiar with X", "conocimientos de X", "worked with X": X is what the answer claims.
+CLAIM_ABOUT = re.compile(r"\b(?:experience|experiencia|familiar|familiarity|knowledge|conocimientos?|worked|working|"
+                         r"trabajado|trabajaste)\s+(?:with|in|of|using|on|con|en|de|del)\s+"
+                         r"(?:(?:the|a|an|el|la|un|una)\s+)?([\w+#.-]+)", re.I)
 IS_CV = re.compile(r"resume|curr[ií]cul|\bcv\b|hoja de vida", re.I)
+
+
+def _threshold(text):
+    """The most years a question asks for ("at least 5 years", "7+ years", "mínimo 3 años"; "more than 5" is
+    6), or None when it names no number of years."""
+    nums = [float(m.replace(",", ".")) + 1 for m in MORE_THAN.findall(text)]
+    nums += [float((a or b).replace(",", ".")) for a, b in AT_LEAST.findall(text)]
+    return max(nums, default=None)
 
 
 def normalize(text):
@@ -190,11 +207,11 @@ class FormAssistant:
             return best_option(value, field["options"]) is not None
         return value not in (None, "")
 
-    def _years_scope(self, text):
+    def _years_scope(self, text, options=()):
         """None if `text` is not a years question (or a v1 profile has no years). Otherwise (kind, names, limit):
         "named" (it names profile skills: limit is the best of their years), "other" (it names something that
         is not a profile skill: limit 0) or "generic" (names nothing: limit is the profile's best skill)."""
-        if not YEARS_QUESTION.search(text):
+        if not YEARS_QUESTION.search(text) and not YEARS_QUESTION.search(" ".join(map(str, options))):
             return None
         if self.facts:
             skills = {f.text.lower(): float(f.years or 0) for f in self.facts.values() if f.kind == "skill"}
@@ -213,12 +230,53 @@ class FormAssistant:
             return "other", set(), 0.0
         return "generic", set(), max(skills.values(), default=0.0)
 
-    def _overstates_years(self, field, value):
+    @staticmethod
+    def _answer_kind(field, value):
+        """"yes", "no" or None (any other answer). A checkbox value of True/1 is a yes; for a select or radio,
+        the first option of a Yes/No pair counts as yes when the value is that option."""
+        v = str(value).strip().lower()
+        if field["type"] == "checkbox" and v in ("true", "1"):
+            return "yes"
+        if v in YES:
+            return "yes"
+        if v in NO:
+            return "no"
+        options = [normalize(o) for o in field.get("options") or []]
+        if len(options) == 2 and options[1] in NO and v == options[0]:
+            return "yes"
+        return None
+
+    def _overclaims(self, field, text):
+        """True if a yes to this question claims more than the profile: a years threshold above the limit of
+        _years_scope, or experience with something that is not a profile skill."""
+        label = field["question"][:60]
+        need = _threshold(text)
+        if need is not None:
+            scope = self._years_scope(text, field.get("options") or ())
+            if scope is not None and need > scope[2]:
+                self.log(f"yes to {label!r} claims {need:g} years, above the profile's {scope[2]:g} "
+                         f"({', '.join(sorted(scope[1])) or scope[0]}); not used")
+                return True
+            return False
+        m = CLAIM_ABOUT.search(text)
+        if m and self.facts and m.group(1).lower() not in NOT_A_SKILL and not match_skills(self.facts, m.group(1)):
+            self.log(f"yes to {label!r} claims experience with {m.group(1)!r}, which is not in the profile; not used")
+            return True
+        return False
+
+    def _overstates_years(self, field, value, cached=False):
         """True if a years-of-experience answer claims more than the profile does (see _years_scope).
 
         A number or text answer is compared by its largest number (so "5+" is 5 and "5-7" is 7). For a select or
-        radio, the chosen option's lower bound is used ("3-5" is 3, "Less than 1" is 0)."""
-        scope = self._years_scope(f'{field.get("context", "")} {field["question"]}')
+        radio, the chosen option's lower bound is used ("3-5" is 3, "Less than 1" is 0). A yes (radio, select or
+        checkbox) is checked by _overclaims; a no always passes. A cached answer with no number is dropped."""
+        text = f'{field.get("context", "")} {field["question"]}'
+        kind = self._answer_kind(field, value)
+        if kind == "no":
+            return False
+        if kind == "yes" and field["type"] in ("radio", "select", "checkbox"):
+            return self._overclaims(field, text)
+        scope = self._years_scope(text, field.get("options") or ())
         if scope is None:
             return False
         options = field.get("options")
@@ -228,8 +286,9 @@ class FormAssistant:
             numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", str(value))]
             claimed = max(numbers, default=None)
         if claimed is None:
-            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}")
-            return False
+            self.log(f"years check skipped for {field['question'][:60]!r}: no number in {str(value)[:40]!r}"
+                     + ("; cached answer dropped" if cached else ""))
+            return cached
         if claimed > scope[2]:
             self.log(f"years answer {claimed:g} is above the profile's {scope[2]:g} ({', '.join(sorted(scope[1])) or scope[0]}); not used")
             return True
@@ -242,7 +301,7 @@ class FormAssistant:
             return False
         if not self._warned:
             self._warned = True
-            self.log("Warning: the profile is version 2 but has no skills in facts; years-of-experience "
+            self.log("Warning: the profile has no skill facts; years-of-experience "
                      "questions go to manual review. Run --setup to add them.")
         return True
 
@@ -319,7 +378,7 @@ class FormAssistant:
             cached = None if sensitive else self.cache.get(normalize(text)) if len(normalize(text)) >= 15 else None
             if rule is not None and self._valid(f, rule):
                 answers[f["id"]] = rule
-            elif cached is not None and self._valid(f, cached) and not self._overstates_years(f, cached):
+            elif cached is not None and self._valid(f, cached) and not self._overstates_years(f, cached, cached=True):
                 answers[f["id"]] = cached
             elif sensitive:
                 if f["required"]:

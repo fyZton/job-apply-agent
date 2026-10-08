@@ -372,7 +372,7 @@ def test_v2_profile_without_skills_sends_years_questions_to_manual(tmp_path, mon
     assert answers == {"b": "Caracas"} and missing == ["Years of experience with Python?"]
     assert calls == [["b"]]  # the years question never reached the model
     a.decide(fields, OFFER)
-    assert sum("no skills" in m for m in logs) == 1  # warned once
+    assert sum("no skill facts" in m for m in logs) == 1  # warned once
 
 
 # --- what a years question is about (review round 1) -----------------------------------------------------
@@ -439,3 +439,75 @@ def test_cached_years_answers_get_the_same_check(tmp_path, monkeypatch):
     a.cache[normalize(" Years of experience with Rust")] = "3-5"
     answers, _ = a.decide([field("b", "Years of experience with Rust", "select", options=["0", "3-5"])], OFFER)
     assert answers == {}
+
+
+# --- yes/no and option answers to years and skill-claim questions ---------------------------------------------
+
+def claimer(tmp_path, years=2, logs=None):
+    facts = [{"id": "skill.python", "kind": "skill", "name": "Python", "years": years}]
+    log = (logs if logs is not None else []).append
+    return FormAssistant({**PROFILE, "facts": facts}, "name: Alex", tmp_path, "m", log)
+
+
+YES_NO = ["Yes", "No"]
+YEARS_OPTS = ["None", "1-2 years", "5+ years"]
+CLAIMS = [
+    ("radio", "Do you have at least 5 years of experience with Python?", YES_NO, "Yes", 2, False),
+    ("radio", "Do you have at least 5 years of experience with Python?", YES_NO, "Yes", 5, True),
+    ("radio", "Do you have at least 5 years of experience with Python?", YES_NO, "No", 2, True),
+    ("radio", "Do you have more than 5 years of experience with Python?", YES_NO, "Yes", 5, False),
+    ("select", "¿Tienes más de 5 años de experiencia con Python?", ["Sí", "No"], "Sí", 2, False),
+    ("select", "¿Tienes mínimo 5 años de experiencia con Python?", ["Sí", "No"], "Sí", 5, True),
+    ("radio", "Do you have 3+ years of experience with Kubernetes?", YES_NO, "Yes", 9, False),
+    ("radio", "Do you have 3+ years of experience with Kubernetes?", YES_NO, "No", 9, True),
+    ("checkbox", "I have 7+ years of Java experience", None, True, 9, False),
+    ("checkbox", "I have 7+ years of Java experience", None, False, 9, True),
+    ("radio", "Do you have hands-on experience with Kubernetes?", YES_NO, "Yes", 2, False),
+    ("radio", "Do you have experience with Python?", YES_NO, "Yes", 2, True),
+    ("radio", "¿Tienes experiencia con Kubernetes?", ["Sí", "No"], "Sí", 2, False),
+    ("radio", "¿Tienes experiencia con Python?", ["Sí", "No"], "Sí", 2, True),
+    ("radio", "Are you familiar with Kubernetes?", YES_NO, "Yes", 2, False),
+    ("radio", "Do you have 1 year of experience with Python?", ["Sure", "No"], "Sure", 2, True),
+    ("select", "How much experience do you have with Kubernetes?", YEARS_OPTS, "5+ years", 2, False),
+    ("select", "How much experience do you have with Kubernetes?", YEARS_OPTS, "None", 2, True),
+    ("radio", "Are you willing to relocate?", YES_NO, "Yes", 2, True),
+]
+
+
+@pytest.mark.parametrize("type_, question, options, value, years, accepted", CLAIMS)
+def test_yes_no_claims_are_checked_against_the_profile(tmp_path, monkeypatch, type_, question, options, value, years,
+                                                       accepted):
+    logs = []
+    a = claimer(tmp_path, years, logs)
+    fake_llm(monkeypatch, {"answers": {"a": value}, "unknown": []})
+    extra = {"options": options} if options else {}
+    f = field("a", question, type_, **extra)
+    f["value"] = False if type_ == "checkbox" else ""
+    answers, missing = a.decide([f], OFFER)
+    assert (answers == {"a": value}) is accepted
+    assert missing == ([] if accepted else [question])
+    if not accepted:
+        assert a.cache == {} and any("not used" in m for m in logs)
+
+
+def test_cached_yes_is_revalidated(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 2)
+    q = "Do you have at least 5 years of experience with Python?"
+    a.cache[normalize(q)] = "Yes"
+    calls = fake_llm(monkeypatch, {"answers": {}, "unknown": ["a"]})
+    answers, missing = a.decide([field("a", q, "radio", options=YES_NO)], OFFER)
+    assert answers == {} and missing == [q] and calls == [["a"]]
+
+
+def test_cached_years_answer_without_a_number_is_dropped(seasoned, monkeypatch):
+    calls = fake_llm(monkeypatch, {"answers": {"a": "3"}, "unknown": []})
+    seasoned.cache[normalize(" Years of experience with Python?")] = "plenty"
+    answers, _ = seasoned.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert answers == {"a": "3"} and calls == [["a"]]
+
+
+def test_years_blocked_log_does_not_mention_version(tmp_path, monkeypatch):
+    logs = []
+    a = FormAssistant({"version": 2, "facts": []}, "name: Alex", tmp_path, "m", logs.append)
+    a.decide([field("a", "Years of experience with Python?", "number")], OFFER)
+    assert any("no skill facts" in m for m in logs) and not any("version 2" in m for m in logs)

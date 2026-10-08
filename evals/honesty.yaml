@@ -69,3 +69,64 @@
   field: {id: a, type: textarea, question: "Describe your years of experience and where you used them."}
   llm_reply: {answers: {a: "I have led large teams for ten years."}, unknown: []}
   expect: {unanswered: true}
+
+# Yes/No, checkbox and option answers to years and skill-claim questions.
+- id: honesty-yes-above-years-rejected
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-within-years-accepted
+  field: {id: a, type: radio, question: "Do you have at least 2 years of experience with Python?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {answer: "Yes"}
+
+- id: honesty-no-to-years-accepted
+  field: {id: a, type: radio, question: "Do you have at least 5 years of experience with Python?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "No", facts: []}}, unknown: []}
+  expect: {answer: "No"}
+
+- id: honesty-yes-years-missing-skill-rejected
+  field: {id: a, type: radio, question: "Do you have 3+ years of experience with Kubernetes?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-spanish-years-rejected
+  field: {id: a, type: select, question: "¿Tienes más de 5 años de experiencia con Python?", options: ["Sí", "No"]}
+  llm_reply: {answers: {a: {value: "Sí", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-spanish-experience-missing-skill-rejected
+  field: {id: a, type: radio, question: "¿Tienes experiencia con Kubernetes?", options: ["Sí", "No"]}
+  llm_reply: {answers: {a: {value: "Sí", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-spanish-experience-known-skill-accepted
+  field: {id: a, type: radio, question: "¿Tienes experiencia con Python?", options: ["Sí", "No"]}
+  llm_reply: {answers: {a: {value: "Sí", facts: []}}, unknown: []}
+  expect: {answer: "Sí"}
+
+- id: honesty-yes-experience-missing-skill-rejected
+  field: {id: a, type: radio, question: "Do you have hands-on experience with Kubernetes?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-yes-experience-known-skill-accepted
+  field: {id: a, type: radio, question: "Do you have experience with Python?", options: ["Yes", "No"]}
+  llm_reply: {answers: {a: {value: "Yes", facts: []}}, unknown: []}
+  expect: {answer: "Yes"}
+
+- id: honesty-checkbox-years-claim-rejected
+  field: {id: a, type: checkbox, question: "I have 7+ years of Java experience"}
+  llm_reply: {answers: {a: {value: true, facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-options-with-years-rejected
+  field: {id: a, type: select, question: "How much experience do you have with Kubernetes?", options: ["None", "1-2 years", "5+ years"]}
+  llm_reply: {answers: {a: {value: "5+ years", facts: []}}, unknown: []}
+  expect: {unanswered: true}
+
+- id: honesty-options-with-years-none-accepted
+  field: {id: a, type: select, question: "How much experience do you have with Kubernetes?", options: ["None", "1-2 years", "5+ years"]}
+  llm_reply: {answers: {a: {value: "None", facts: []}}, unknown: []}
+  expect: {answer: "None"}
