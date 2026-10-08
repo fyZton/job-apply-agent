@@ -99,6 +99,9 @@ YEARS_Q = re.compile(r"\byears?\b|\byrs?\b|\banos?\b|\bmonths?\b|\bmeses\b|\bmes
 MONTHS = re.compile(r"\bmonths?\b|\bmeses\b|\bmes\b")
 SKILL_Q = re.compile(r"\b(?:experienc\w*|proficien\w*|know|knowledge|conoc\w*|familiar\w*|used|use|using|worked|"
                      r"skills?|levels?|nivel|rate|rating|expert\w*|competen\w*|comfortable)\b")
+WORKING = re.compile(r"\b(?:work\w*|trabaj\w*|employ\w*|empleado)\b|experienc")
+YEARS_EXEMPT = re.compile(r"\b(?:old|age|edad|notice|preaviso|live\w*|reside\w*|residen\w*|located|based|ubicad\w*|"
+                          r"viv\w+|duration|length)\b")
 EXP_WORDS = re.compile(r"experienc|proficien|skill|knowledge|conoc|familiar")
 # Questions about pay, availability, legal status, location, contact details or consent: a number or a name there
 # is not a claim of experience. EN + ES, folded.
@@ -122,6 +125,11 @@ employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
 old older adult adults mayor mayores edad accept accepts
+whats whos wheres hows whens whys youre youd youve youll im ive dont doesnt isnt arent wont cant theres thats lets
+hasnt havent hadnt wasnt werent wouldnt couldnt shouldnt didnt there know
+player well enjoy enjoying collaborate collaborative collaboration together others communicate communication adapt
+adaptable learn learner fast motivated problem solving equipo gusta disfrutas colaborar obtained undergo
+completo parcial te
 located based live living lives reside resides ubicado ubicada vives vive vivo est edt cst pst mst eastern central
 pacific mountain gmt utc cet overlap comfortable model duration
 full-time part-time fulltime parttime contract contractor contractors freelance employee employees office oficina
@@ -297,11 +305,20 @@ def scale_of(t, opts):
     return (min(nums), max(nums)) if len(nums) >= 2 else None
 
 
+INTERJ = re.compile(r"^\W*(?:no (?:doubt|question|complaints?|problem|worries|way)|not a problem|sin duda|por supuesto|"
+                    r"of course|absolutely|certainly)\W*")
+
+
 def answer_kind(v):
-    """"yes", "no" or None for a folded answer, by its first word: "Yes, I do" is a yes, "No tengo" a no."""
-    words = re.findall(r"[a-z0-9]+", v)
-    first = words[0] if words else ""
-    return "yes" if first in YES else "no" if first in NO else None
+    """"yes", "no" or None for a folded answer. It is a no only when its first clause is a governed negation
+    ("No", "No tengo", "I have never used it"); "No complaints, C2" and "No less than 8" are not. Interjections
+    such as "No doubt," are skipped: "No doubt, yes" is a yes."""
+    v = INTERJ.sub("", v)
+    clauses = [c for c in CLAUSES.split(v) if c and c.strip()]
+    if clauses and negated(clauses[0]):
+        return "no"
+    words = re.findall(r"[a-z0-9]+", clauses[0] if clauses else v)
+    return "yes" if words and words[0] in YES else None
 
 
 AGE = re.compile(r"(?:(?:at least|minimum|more than|over|m[aá]s de)\s*)?\d+\s*\+?\s*(?:years?|yrs?|a[nñ]os?)\s*"
@@ -335,7 +352,8 @@ def years_in(v, months_q, low):
         return None
     head = v[:nums[0].start()]
     values = [float(m.group().replace(",", ".")) for m in nums]
-    if re.search(r"less than|under|up to|menos de|hasta|<", head) and (low or values[0] <= 1):
+    if re.search(r"(?<!no )(?<!not )(?<!never )less than|under|up to|(?<!no )menos de|hasta|<", head) and (
+            low or values[0] <= 1):
         return 0.0
     n = min(values) if low else max(values)
     if re.search(r"more than|over|mas de|greater than|above|mayor a|superior a|>", head):
@@ -423,7 +441,8 @@ SCRUM = re.compile(r"\bscrum masters?\b")
 CERTIFIED = re.compile(r"\b(?:certified|certificad[oa])\b")
 ANS_DEG = re.compile(r"\b(?:phd|doctorate|doctorado|doctoral|doctor of philosophy|masters?|maestria|mba|msc|"
                      r"m\.sc|ms|m\.s|bachelors?|licenciatura|"
-                     r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree)\b")
+                     r"bsc|posgrado|postgrad\w*|advanced degree|graduate degree|degree|undergraduate|"
+                     r"college degree|graduated|graduate of|titulo|carrera|ingenieria en|ingeniero en)\b")
 BILINGUAL = re.compile(r"\bbilingu\w*|\bnative[- ]level|\bnativ[eo][- ]?(?:speaker|proficiency)|\bnivel nativo|"
                        r"\bnative proficiency|\bfull proficiency")
 # A clause that starts with a negation says nothing about the profile ("No", "I have not used X yet"); "not just X",
@@ -462,11 +481,13 @@ def positive(raw):
 TEAM = re.compile(r"\b(managed|managing|manage|handled|handling|led|leading|lead|supervised|supervising|mentored|"
                   r"mentoring|coordinat\w*|directed|lider\w*|dirig\w*|gestion\w*)\b[^.;!?]{0,30}?\b(?:\d+|"
                   + "|".join(_NUMW)
-                  + r"|teams?|people|engineers|developers|equipos?|personas|staff|interns|juniors|reports)\b")
+                  + r"|teams?|people|others|employees?|members|direct reports|engineers|developers|equipos?|personas|"
+                  r"empleados|colaboradores|staff|interns|juniors|reports)\b")
 MANAGING = re.compile(r"manag\w*|led|lead\w*|supervis\w*|mentor\w*|coordin\w*|direct\w*|lider\w*|dirig\w*|gestion\w*")
 MGMT_VERB = (r"(?:manag\w*|handl\w*|led|lead(?:ing)?|supervis\w*|mentor\w*|coordinat\w*|direct(?:ed|ing)|lider\w*|"
              r"gestion\w*|dirig\w*)")
-MGMT_OBJ = r"(?:teams?|people|engineers|developers|equipos?|personas|staff|reports|juniors|interns)"
+MGMT_OBJ = (r"(?:teams?|people|others|employees?|members|direct reports|engineers|developers|equipos?|personas|"
+            r"empleados|colaboradores|staff|reports|juniors|interns)")
 MGMT_Q = re.compile(r"\b" + MGMT_VERB + r"\b[^.?!;]{0,30}?\b" + MGMT_OBJ + r"\b|"
                     r"\bexperience (?:in )?(?:managing|leading|supervising)\b|\bpeople management\b|"
                     r"\bteam management\b")
@@ -637,6 +658,8 @@ class Claims:
         also say which one; a legend (`named` False) may be neutral but must claim no experience."""
         if not named and (YEARS_Q.search(q) or threshold(q)):
             return False
+        if YEARS_Q.search(q) and WORKING.search(q) and not YEARS_EXEMPT.search(q):
+            return False  # years of working are years of experience, whatever follows
         return ((not named or bool(NON_CLAIM.search(q))) and not EXP_WORDS.search(q)
                 and not groups(LANG_RX.sub(" ", q))
                 and not (LANG_RX.search(q) or EDU_Q.search(q) or CERT_Q.search(q) or PURE_CERT.search(q)
@@ -677,6 +700,8 @@ class Claims:
             if legend and not self._topic(fold(legend), named=False):
                 why = self.check({**field, "question": legend, "context": ""}, legend, value)[1]
             why = why or self._answer_claims(str(value), "", True)
+            if not why and re.search(r"\d", v):  # a number a rule gives for a question is checked like any other
+                why = self.check(field, text, value)[1]
             return not why, why
         if field["type"] in ("text", "textarea") and SALARY_Q.search(fold(field.get("question") or text)) and [
                 tok for tok in TOKEN.findall(v) if not NUMTOK.fullmatch(tok) and tok not in MONEY]:
@@ -796,6 +821,10 @@ class Claims:
                 exists = True
         if not exists:
             return ""
+        for name in known_tech(t):  # "Office 365": a phrase the stop words would otherwise swallow
+            words = TOKEN.findall(name)
+            if len(words) > 1 and not self._skill(words):
+                return f"claims experience with {name!r}, which is not in the profile"
         if opts and kind is None:
             runs += groups(LANG_RX.sub(" ", v))  # an option names its own technology: "5+ years with Node.js"
         matched, unmatched = self.resolve(runs)

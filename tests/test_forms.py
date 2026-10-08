@@ -719,7 +719,7 @@ def test_best_option_matches_accents_in_the_fuzzy_step():
 
 def test_dotnet_years_citing_python_is_rejected(tmp_path, monkeypatch):
     a = claimer(tmp_path, 3)
-    fake_llm(monkeypatch, {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []})
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.python"]}, "unknown": []})
     answers, missing = a.decide([field("a", "Years of .NET experience", "number")], OFFER)
     assert answers == {} and missing == ["Years of .NET experience"]
 
@@ -784,3 +784,15 @@ def test_fixed_rule_with_a_small_number_does_not_crash(tmp_path, monkeypatch):
     fake_llm(monkeypatch, {"answers": {}, "unknown": []})
     q = "Tell us about the juniors you mentored"
     assert a.decide([field("a", q)], OFFER) == ({}, [q])
+
+
+# --- round 12 -------------------------------------------------------------------------------------------------------
+
+def test_years_of_working_full_time_are_capped_and_not_cached(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    q = "How many years have you been working full-time?"
+    fake_llm(monkeypatch, {"answers": {"a": "15"}, "facts": {"a": ["skill.python"]}, "unknown": []})
+    assert a.decide([field("a", q, "number")], OFFER) == ({}, [q])
+    assert a.cache == {}
+    fake_llm(monkeypatch, {"answers": {"a": "3"}, "facts": {"a": ["skill.python"]}, "unknown": []})
+    assert a.decide([field("a", q, "number")], OFFER)[0] == {"a": "3"}

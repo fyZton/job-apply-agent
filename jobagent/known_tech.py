@@ -31,3 +31,4 @@ AMBIGUOUS = {"c", "r", "excel", "sheets", "macros", "go", "make", "spark", "rust
              "rails", "apex", "dynamics", "rest", "oracle", "unity", "unreal", "julia", "bash", "helm", "rabbit",
              "gpt", "swagger", "vagrant", "packer", "tornado", "babel", "mocha", "jest", "sentry", "boomi"}
 CUES = {"lang", "language", "programming", "developer", "code", "coding", "framework", "library", "stack"}
+KNOWN_TECH |= {"office 365", "microsoft office", "ms office", "microsoft 365", "office365", "m365"}

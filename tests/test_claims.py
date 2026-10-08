@@ -537,3 +537,78 @@ def test_round11_accepts(type_, question, value):
 def test_answers_about_managing_are_backed_by_a_managing_verb():
     assert verdict_q("Anything else?", "I led the team.", "textarea", profile=MGMT)
     assert verdict_q("Anything else?", "I have managed teams for years.", "textarea", profile=MGMT)
+
+
+# --- round 12 --------------------------------------------------------------------------------------------------------
+
+NOEDU = {**PROFILE, "facts": [f for f in BASE if f["kind"] != "education"]}
+OFFICE = {**PROFILE, "facts": BASE + [{"id": "skill.o365", "kind": "skill", "name": "Office 365", "years": 2}]}
+
+WORK_YEARS = [
+    "How many years have you been working full-time?", "How many years have you worked remotely?",
+    "How many years have you worked as a contractor?", "¿Cuántos años has trabajado a tiempo completo?",
+]
+
+
+@pytest.mark.parametrize("question", WORK_YEARS)
+def test_years_of_working_are_capped_by_the_best_skill(question):
+    assert not verdict_q(question, "20", "number")
+    assert not verdict_q(question, "15", "text")
+    assert verdict_q(question, "3", "number")
+
+
+R12_REJECT = [
+    ("radio", "Have you managed employees?", "Yes", NOEDU),
+    ("radio", "Have you managed others before?", "Yes", NOEDU),
+    ("radio", "¿Has gestionado empleados?", "Sí", NOEDU),
+    ("textarea", "Anything else?", "I have managed several employees.", NOEDU),
+    ("textarea", "Anything else?", "I hold an undergraduate degree in computer science.", NOEDU),
+    ("textarea", "Anything else?", "I have a university degree in engineering.", NOEDU),
+    ("text", "Your level of German", "No complaints, C2", CS),
+    ("radio", "Do you have a Master's degree?", "No doubt, yes", CS),
+    ("radio", "Do you hold the CKA certification?", "No question, yes", CS),
+    ("text", "How many years of Python?", "No less than 8", CS),
+    ("text", "How many years of Python?", "Not less than 8", CS),
+    ("text", "How many years of Python?", "never less than 8", CS),
+    ("text", "How many years of Python?", "No menos de 8 años", CS),
+    ("text", "How many years of Kubernetes?", "No less than 8", CS),
+    ("radio", "Do you have experience with Office 365?", "Yes", NOEDU),
+    ("radio", "Do you use Microsoft Office?", "Yes", NOEDU),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, profile", R12_REJECT)
+def test_round12_rejects(type_, question, value, profile):
+    assert not verdict_q(question, value, type_, profile=profile)
+
+
+def test_fixed_rule_numbers_about_years_are_checked():
+    for value in ("No less than 8", "No menos de 8 años", "8"):
+        assert not verdict_q("How many years of Python?", value, "text", profile=CS, fixed=True)
+    assert verdict_q("How many years of Python?", "3", "text", profile=CS, fixed=True)
+
+
+R12_ACCEPT = [
+    ("textarea", "Anything else?", "I have a bachelor's degree in computer science.", CS),
+    ("radio", "Do you have experience with Office 365?", "Yes", OFFICE),
+    ("number", "What's your expected salary?", "1800", CS),
+    ("text", "What's your notice period?", "2 weeks", CS),
+    ("text", "What's your time zone?", "UTC-4", CS),
+    ("text", "What's your English level?", "B2", CS),
+    ("text", "What's your highest level of education?", "Bachelor's degree", CS),
+    ("number", "What's your total years of experience?", "3", CS),
+    ("textarea", "Is there anything else you'd like us to know?", "I have 3 years of Python experience.", CS),
+    ("radio", "Are you a team player?", "Yes", CS),
+    ("radio", "Can you work well in a team?", "Yes", CS),
+    ("radio", "Do you work well with others?", "Yes", CS),
+    ("radio", "Do you enjoy working in a team?", "Yes", CS),
+    ("radio", "¿Te gusta trabajar en equipo?", "Sí", CS),
+    ("select", "Highest degree obtained", "Bachelor's", CS),
+    ("radio", "Are you willing to undergo a background check?", "Yes", CS),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, profile", R12_ACCEPT)
+def test_round12_accepts(type_, question, value, profile):
+    options = EDU_OPTS if question == "Highest degree obtained" else None
+    assert verdict_q(question, value, type_, options, profile=profile)

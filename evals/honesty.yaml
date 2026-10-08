@@ -1098,3 +1098,124 @@
   field: {"id": "a", "type": "text", "question": "How did you hear about us?"}
   llm_reply: {"answers": {"a": {"value": "Indeed", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Indeed"}
+
+# Round 12: working years, management objects, degree wording, governed negation, contractions, teamwork.
+- id: honesty-r12-fulltime-15
+  field: {"id": "a", "type": "number", "question": "How many years have you been working full-time?"}
+  llm_reply: {"answers": {"a": {"value": "15", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-remotely-20
+  field: {"id": "a", "type": "number", "question": "How many years have you worked remotely?"}
+  llm_reply: {"answers": {"a": {"value": "20", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-contractor-20
+  field: {"id": "a", "type": "number", "question": "How many years have you worked as a contractor?"}
+  llm_reply: {"answers": {"a": {"value": "20", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-tiempo-completo-15
+  field: {"id": "a", "type": "number", "question": "¿Cuántos años has trabajado a tiempo completo?"}
+  llm_reply: {"answers": {"a": {"value": "15", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-employees
+  field: {"id": "a", "type": "radio", "question": "Have you managed employees?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-others
+  field: {"id": "a", "type": "radio", "question": "Have you managed others before?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-empleados
+  field: {"id": "a", "type": "radio", "question": "¿Has gestionado empleados?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-several-employees
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have managed several employees.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-undergrad
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I hold an undergraduate degree in computer science.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-university-degree
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have a university degree in engineering.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-no-complaints-c2
+  field: {"id": "a", "type": "text", "question": "Your level of German"}
+  llm_reply: {"answers": {"a": {"value": "No complaints, C2", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-no-doubt-yes
+  field: {"id": "a", "type": "text", "question": "Do you have a Master's degree?"}
+  llm_reply: {"answers": {"a": {"value": "No doubt, yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-no-less-than
+  field: {"id": "a", "type": "text", "question": "How many years of Python?"}
+  llm_reply: {"answers": {"a": {"value": "No less than 8", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-no-menos-de
+  field: {"id": "a", "type": "text", "question": "How many years of Python?"}
+  llm_reply: {"answers": {"a": {"value": "No menos de 8 años", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-office-365
+  field: {"id": "a", "type": "radio", "question": "Do you have experience with Office 365?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r12-ok-fulltime-3
+  field: {"id": "a", "type": "number", "question": "How many years have you been working full-time?"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r12-ok-whats-salary
+  field: {"id": "a", "type": "number", "question": "What's your expected salary?"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r12-ok-whats-notice
+  field: {"id": "a", "type": "text", "question": "What's your notice period?"}
+  llm_reply: {"answers": {"a": {"value": "2 weeks", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "2 weeks"}
+
+- id: honesty-r12-ok-whats-years
+  field: {"id": "a", "type": "number", "question": "What's your total years of experience?"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r12-ok-team-player
+  field: {"id": "a", "type": "radio", "question": "Are you a team player?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r12-ok-well-in-team
+  field: {"id": "a", "type": "radio", "question": "Can you work well in a team?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r12-ok-with-others
+  field: {"id": "a", "type": "radio", "question": "Do you work well with others?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r12-ok-te-gusta
+  field: {"id": "a", "type": "radio", "question": "¿Te gusta trabajar en equipo?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Sí"}
+
+- id: honesty-r12-ok-background-check
+  field: {"id": "a", "type": "radio", "question": "Are you willing to undergo a background check?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
