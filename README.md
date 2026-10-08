@@ -105,12 +105,17 @@ Kinds are `skill` (with `years`), `cert`, `experience` (with `start`, `end` as `
 
 Why ids:
 
-- **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`, and a number or open-text
-  answer has to come back with the ids it relies on, as `{"value": "3", "facts": ["skill.python"]}`. An answer is
-  rejected, and the field goes to manual review, when it cites an id that doesn't exist, cites nothing (a plain
-  `0` is allowed), or gives more years than the facts it cites. The years check described under
-  [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without facts keeps the old behavior, and a plain value is still accepted for
-  text, select, radio and checkbox fields.
+- **Grounding.** The form prompt lists every fact as `[skill.python] Python, 3 years`. Only an answer that claims
+  experience has to cite: a years question in a number, text or text area field must come back with the ids it
+  relies on, as `{"value": "3", "facts": ["skill.python"]}`. The cited facts must include the skill the question
+  names, and the answer cannot be above that skill's years. If the question names no skill, the limit is the
+  largest years among the cited skill facts; if it names a skill that is not in the profile, only `0` is
+  accepted. A plain `0` needs no citation. Salary, notice period, city and similar fields need no citation (the
+  fixed answers and the profile values cover them), and a free-text answer may cite nothing when it uses no fact.
+  Any cited id that doesn't exist rejects the answer, and a rejected field goes to manual review. A version 2
+  profile with no skill facts sends every years question to manual review and logs one warning. The years check
+  described under [Prompt-injection defense](#prompt-injection-defense) reads the same facts. A profile without
+  facts keeps the old behavior, and a plain value is still accepted for select, radio and checkbox fields.
 - **CV generation.** The planned CV generator will pick and reorder facts by id, so a tailored CV can only
   contain what is in the profile.
 
@@ -131,15 +136,37 @@ python -m jobagent --from-cv my_cv.pdf      # same, starting from what the CV sa
 skills, certificates, jobs with their bullets, education and languages. Invalid answers such as a bad email,
 negative years or a date that isn't `YYYY-MM` are asked again. If a `profile.yaml` already exists (version 1 or 2)
 it is the starting point, so this is also how you upgrade a v1 file. At the end it prints the YAML and asks
-`Write profile.yaml? [y/N]`. If the file exists it asks again before replacing it and keeps the old one as
-`profile.yaml.bak`. Nothing is written without that final `y`.
+`Write profile.yaml? [y/N]` (or `Overwrite the existing profile.yaml?` if there is one). That is the only
+confirmation. Nothing is written without that `y`. The new file is written to a temporary file and swapped in, and
+the old one is kept as `profile.yaml.bak-YYYYMMDD-HHMMSS`; earlier backups are never overwritten. If the disk
+refuses the write (a file locked by OneDrive, for example) your answers are saved to `profile.yaml.new`. Ctrl+C
+cancels with nothing written. If a draft fact fails validation at the end it is dropped and listed, and the rest
+is kept. Old `degree`, `english` and `spanish` keys are removed from the new file once they are facts.
+
+`--setup` rewrites the file from the answers, so comments in an existing `profile.yaml` are not preserved.
+`profile.yaml` and its backups contain personal data: keep them out of synced or shared folders, or restrict who
+can read them. `.gitignore` already covers `profile.yaml`, `*.bak*` and `profile.yaml.new`.
 
 `--from-cv` reads a `.pdf`, `.docx` or `.txt`. Email, phone, LinkedIn and GitHub come from regular expressions.
-The CV text is also sent to the configured LLM backend to propose facts, each with a quote from the CV as its
-source; a fact is dropped unless that quote is in the text and names the fact. CV text is untrusted like a job
-posting: if it looks like a prompt injection the LLM step is skipped and you are told. Use `--no-llm` to skip it on
-purpose. The result is only a draft for the questions, so check every value: a quote proves the CV says something,
-not that the model read the number right.
+Limits: files over 5 MB are refused, a `.docx` is refused if it is over 50 MB once unzipped, and a PDF may have at
+most 30 pages. Only the first 20000 characters go to the model, and the log says when the text was cut. Scanned
+PDFs are not supported (there is no OCR): a file with no text stops with "no text found". Encrypted or damaged
+files stop with a one-line message.
+
+The CV text is also sent to the configured LLM backend (using `llm.form_model`) to propose facts. Before that,
+emails, phone numbers and lines about IDs, bank data or birth dates are replaced with placeholders, and you are
+asked `Send CV text (contact data redacted) to the LLM backend <name>? [y/N]`. `--yes` skips the question and
+`--no-llm` skips the LLM step; both options need `--from-cv`. The model must give each fact with a quote from the
+CV. A fact is kept only if the quote is in the CV text and contains the fact's name (whole words, so `C` does not
+match `chemistry` or `C++`). Every number or date the model claims, such as years, a year, start and end dates or a
+language level, must also be in the quote; one that is not is left out, logged as `unverified`, and the rest of the
+fact is kept. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
+log by reason (not backed by the CV, or invalid).
+
+CV text is untrusted like a job posting: if it looks like a prompt injection the LLM step is skipped and you are
+told. The text extractors read everything in the file, including white text on a white background and other hidden
+text, so anyone who can edit your CV can plant words in the draft. The result is only a draft for the questions:
+check every field. A quote proves the CV says something, not that the model read the number right.
 
 ## Tests
 
@@ -204,7 +231,7 @@ Job postings and form labels are written by third parties and end up in the prom
    A hit skips the offer, adds a "To apply" row with the reasons in Notes, and makes no LLM call. The same check
    runs on every form field's label, context and options: one hit sends the whole form to manual review with no
    LLM call. It is a tripwire for obvious attacks and will miss a careful one.
-2. **Data framing.** The posting is wrapped in `<job_posting>` and the form fields in `<form_fields>`, and the
+2. **Data framing.** The posting is wrapped in `<job_posting>` and the form fields in `<form_fields>` and CV text in `<cv>`, and the
    prompt says that text inside those tags is data, never instructions. Any tag of that name inside the
    text (opening or closing, any case, spaces, fullwidth brackets) is rewritten so it can't end the block early.
    The offer URL and board name go inside the wrapped block too.
@@ -214,8 +241,8 @@ Job postings and form labels are written by third parties and end up in the prom
    text areas). A years-of-experience answer (also one read from the cache) is rejected if its largest number
    ("5+" is 5, "5-7" is 7) is above the profile's years for the skill the question names, or above the profile's
    maximum when no skill matches, and the field is left for you to fill in by hand. With facts in the profile,
-   number and open-text answers must also cite known fact ids (see [Profile and facts](#profile-and-facts)). A score whose CV name isn't
-   one of the configured files is rejected too.
+   a years-of-experience answer must also cite the skill fact it relies on (see
+   [Profile and facts](#profile-and-facts)). A score whose CV name isn't one of the configured files is rejected too.
 
 **Sensitive fields.** A field asking for a government or national ID, passport, SSN, IBAN or bank account,
 routing number, credit card, password or date of birth is never answered by the model and never read from the
