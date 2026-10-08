@@ -55,7 +55,7 @@ horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annua
 engineering ingenieria processing process data application applications
 highest education educacion university universidad universitario universitaria completed educativo academic
 academico estudios titulo level
-minimum maximum least
+minimum maximum least trabajando trabajas
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently legally receive calls call require requires now future
 first last middle given family maiden
@@ -126,6 +126,8 @@ employer employers empleador address direccion zip postal
 why motivation motivations motivated motivacion summary resumen
 confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
 old older adult adults mayor mayores edad accept accepts
+salarial salariales aspiracion aspiraciones deseado deseada pretendido pretendida renta empezar comenzar preferida
+preferido instruccion employed unemployed empleado empleada title titles cargo
 whats whos wheres hows whens whys youre youd youve youll im ive dont doesnt isnt arent wont cant theres thats lets
 hasnt havent hadnt wasnt werent wouldnt couldnt shouldnt didnt there know
 player well enjoy enjoying collaborate collaborative collaboration together others communicate communication adapt
@@ -148,7 +150,7 @@ NON_CLAIM = re.compile(r"(?<![\w.-])(?:" + "|".join(sorted(NON_CLAIM_WORDS | set
 ROLE_TERMS = set("""
 developer developers dev programmer engineer engineers analyst specialist consultant backend frontend fullstack web
 senior lead teamlead mobile devops qa architect manager scrummaster dataengineer dataanalyst datascientist
-productmanager projectmanager director principal
+productmanager projectmanager director principal cto cio cso cfo ceo coo vp founder cofounder owner head staff
 """.split())
 # In an answer every role word needs profile text behind it, backend and developer included.
 ROLE_ANS = ROLE_TERMS - {"web"}
@@ -168,14 +170,17 @@ usd eur gbp mxn cop ves ars clp pen brl cad k m mil month months mes meses year 
 anual ano anos hour hr hora per por a al negotiable negociable gross net bruto neto approx approximately aprox
 before after tax taxes impuestos and y or o around circa to
 """.split())
-SALARY_Q = re.compile(r"\b(?:salary|salaries|salario|salarios|sueldo|compensation|wage|pay|hourly|remuneracion)\b")
+SALARY_Q = re.compile(r"\b(?:salary|salaries|salario|salarios|sueldo|compensation|wage|pay|hourly|remuneracion|"
+                      r"salarial|pretension|aspiracion|deseado|pretendido|renta)\b")
 # Questions whose answer is a place, a name or a link: proper names in the answer are fine there.
-PLACE_Q = re.compile(r"located|based|\blive\b|living|\blives\b|reside|ubicad|\bvives?\b|vivo|"
+PLACE_Q = re.compile(r"disponib|availab|empezar|comenzar|modalidad|work mode|instruccion|title|cargo|employed|"
+                     r"empleado|located|based|\blive\b|living|\blives\b|reside|ubicad|\bvives?\b|vivo|"
                      r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
                      r"\bzip\b|postal|\bname\b|nombre|apellido|surname|employer|empleador|linkedin|github|portfolio|"
                      r"portafolio|website|sitio web|hear|referr|referid|enteraste|citizen|nationality|nacionalidad|"
                      r"gender|genero|pronoun|time ?zone|zona horaria|school|university|universidad|company|empresa")
-EDU_Q = re.compile(r"\b(?:degree|doctoral|bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
+EDU_Q = re.compile(r"\b(?:postgrad\w*|posgrado|undergrad\w*|graduate program|master program|degree|doctoral|"
+                   r"bachelor\w*|licenciatur\w*|masters?|maestri\w*|msc|bsc|mba|phd|doctorate|"
                    r"doctorado|diploma|titulo|grado|graduate|universit\w*|education|educacion|estudios|carrera)\b")
 CERT_Q = re.compile(r"\bcertif\w*|\bcertificad\w*")
 EDU_RANKS = ((3, r"\b(?:phd|doctor\w*)\b"),
@@ -202,6 +207,7 @@ ROLE_PHRASES = tuple((re.compile(rx), w) for rx, w in (
     (r"\b(?:team|tech|technical) lead(?:er)?\b", "teamlead"), (r"\bdata engineer\w*", "dataengineer"),
     (r"\bdata analy\w+", "dataanalyst"), (r"\bdata scien\w+", "datascientist"),
     (r"\bscrum master\b", "scrummaster"), (r"\bproduct manager\b", "productmanager"),
+    (r"\bvice[- ]president\b", "vp"), (r"\bco[- ]?founder\b", "cofounder"), (r"\bchief \w+ officer\b", "ceo"),
     (r"\bproject manager\b", "projectmanager"), (r"\bmobile (?:phone|number|no\.?|telephone)\b", "phone number"),
 ))
 DOTNET = re.compile(r"(?<![\w.])\.net\b|\bdot ?net\b")
@@ -277,7 +283,7 @@ SCALE_RX = re.compile(NUM + r"\s*(?:-|to|a)\s*" + NUM)
 OUT_OF = re.compile(r"(?:out of|sobre)\s*(\d+)")
 SLASH = re.compile(r"/\s*(\d+)")
 RATING_Q = re.compile(r"\brat(?:e|ing)\b|skill level|level of|proficiency|\bscore\b|\bnivel|calific|puntu|self-?assess")
-RATING_A = re.compile(NUM + r"(?:\s*/\s*(\d+))?\s*%?")
+RATING_A = re.compile(NUM + r"(?:\s*(?:/|out of)\s*(\d+))?\s*%?")
 
 
 ARITH = re.compile(r"\d\s*[*x/+]\s*\d")
@@ -492,7 +498,9 @@ COUNT = r"(?:\d+|" + "|".join(_NUMW) + r"|dozen|docena)"
 MGMT_ANS = (
     re.compile(rf"\b{HUMANS}\s+of\s+{COUNT}\b"),
     re.compile(rf"\b{COUNT}\s+{HUMANS}\b"),
-    re.compile(rf"\b(?:responsible for|in charge of|a cargo de|responsable de)\s+(?:a |the |an )?{HUMANS}\b"),
+    re.compile(rf"\b(?:responsible for|in charge of|a cargo de|responsable de)\s+(?:\w+\s+){{0,3}}?{HUMANS}\b"),
+    re.compile(r"\b(?:had|have|has|with)\s+(?:direct\s+)?reports\b|\breport(?:ed|s)? to me\b|"
+               r"\b(?:personas|empleados) a mi cargo\b|\bmis reportes\b"),
     re.compile(rf"\b(?:hired|grew|built|ran|run|headed|oversaw|oversee|onboarded|recruited|fired)\b"
                rf"[^.;!?]{{0,25}}?\b{HUMANS}\b"),
 )
@@ -505,7 +513,11 @@ MGMT_Q = re.compile(r"\b" + MGMT_VERB + r"\b[^.?!;]{0,30}?\b" + MGMT_OBJ + r"\b|
                     r"\bexperience (?:in )?(?:managing|leading|supervising)\b|\bpeople management\b|"
                     r"\bteam management\b")
 PREP_LIST = [[w] for w in ("of", "in", "with", "using", "de", "en", "con", "on", "for")]
-TIMEW = {"year", "years", "yr", "yrs", "ano", "anos", "decade", "decades", "decada", "decadas", "career", "carrera"}
+UNIT_FACTOR = {"month": 1 / 12, "months": 1 / 12, "mes": 1 / 12, "meses": 1 / 12, "week": 1 / 52, "weeks": 1 / 52,
+               "semana": 1 / 52, "semanas": 1 / 52}
+NONWORK = re.compile(r"\b(?:liv\w+|vivo|vivir|vivimos|resid\w+|based|born|nacido|nac\w+|moved|mude|ubicad\w+)\b")
+TIMEW = {"month", "months", "mes", "meses", "week", "weeks", "semana", "semanas", "year", "years", "yr", "yrs",
+         "ano", "anos", "decade", "decades", "decada", "decadas", "career", "carrera"}
 UNREADABLE = set("""score many several plenty countless multiple numerous muchos muchas varios varias couple few
 some lots""".split())
 SINCE_YEAR = re.compile(r"\b(?:since|desde)\s+((?:19|20)\d\d)\b")
@@ -519,7 +531,8 @@ i im ok us usa uk eu cv hr it id pm am pdf faq usd eur gbp mxn cop ves utc gmt e
 thursday friday saturday sunday january february march april may june july august september october november
 december lunes martes miercoles jueves viernes sabado domingo enero febrero marzo abril mayo junio julio agosto
 septiembre octubre noviembre diciembre hello hi hola thanks thank gracias regards sincerely dear mr mrs ms dr
-e.g i.e etc
+e.g i.e etc universitario universitaria secundaria bachillerato bachiller tecnico tecnologo licenciado posgrado
+hibrido hibrida
 """.split())
 WORD = re.compile(r"[\w+#]+(?:\.[\w+#]+)*")
 ORDINAL = re.compile(r"\d+(?:st|nd|rd|th|k|m|h|d|x)")
@@ -579,7 +592,8 @@ def _tech_like(word, start, after, names=True):
     """The word of a free-text answer looks like a technology or proper name: letters with digits or + # .,
     CamelCase, ALL-CAPS, or a capitalised word that does not just start a sentence."""
     f = fold(word)
-    if not any(c.isalpha() for c in word) or f in COMMON_CAPS or f in STOP and not word.isupper():
+    if not any(c.isalpha() for c in word) or f in COMMON_CAPS or (
+            f in STOP or f in NON_CLAIM_WORDS or f in ADVERBS) and not word.isupper():
         return False
     if CEFR.fullmatch(f) or ORDINAL.fullmatch(f) or re.fullmatch(r"(?:utc|gmt)[+-]?\d*", f):
         return False
@@ -778,6 +792,13 @@ class Claims:
             why = self._answer_claims(str(value), t, True)
         return not why, why
 
+    def _language_count(self, text):
+        """How many languages a text says its speaker has: trilingual, multilingual, "five languages"."""
+        counts = [3 for _ in re.finditer(r"\b(?:trilingu\w+|multilingu\w+|polyglot|poliglota)\b", text)]
+        counts += [self._qty(m.group(1)) or 0 for m in re.finditer(
+            r"\b(\d+|" + "|".join(_NUMW) + r")\s+(?:languages|idiomas|lenguas)\b", text)]
+        return max(counts, default=0)
+
     def _manages(self):
         return any(MANAGING.fullmatch(tok) for tok in self.known)
 
@@ -785,6 +806,8 @@ class Claims:
         if kind == "no":
             return ""
         langs = {LANGS[w] for w in LANG_RX.findall(t)} | {LANGS[w] for w in LANG_RX.findall(v)}
+        if kind != "no" and (need := self._language_count(t + " " + v)) > len(self.langs):
+            return f"claims {need} languages, which the profile's languages do not back"
         if not langs:
             if (BILINGUAL.search(t) or BILINGUAL.search(v)) and sum(r >= 6 for r in self.langs.values()) < 2:
                 return "claims to be bilingual, which the profile's languages do not back"
@@ -848,7 +871,8 @@ class Claims:
         runs = groups(LANG_RX.sub(" ", t))
         years_q = (bool(YEARS_Q.search(t)) or any(YEARS_Q.search(fold(o)) for o in opts))
         months_q, ftype = bool(MONTHS.search(t)), field["type"]
-        rating = None if years_q or LANG_RX.search(t) or not RATING_Q.search(t) else rating_of(v)
+        cue = RATING_Q.search(t) or scale_of(t, opts) is not None or re.search(r"\d\s*/\s*\d|\bout of\b", v)
+        rating = None if years_q or LANG_RX.search(t) or not cue else rating_of(v)
         years, exists = None, False
         thr = self._asked(text, t, years_q)
         if ftype == "number":
@@ -894,10 +918,13 @@ class Claims:
         if unmatched:
             return f"claims experience with {' '.join(unmatched)!r}, which is not in the profile"
         word = 0 if kind or years_q or rating or LANG_RX.search(t) else rank(v)
-        if word and matched:  # "Expert" in Python needs the years of an expert, and not the top of the scale
+        if word and (matched or EXP_WORDS.search(t) or RATING_Q.search(t)):
+            # "Expert" in Python needs the years of an expert, and not the top of the scale
             for name, have in matched.items():
                 if have < WORD_YEARS.get(word, 0):
                     return f"rates {name} above the {have:g} years the profile has"
+            if not matched and self.best < WORD_YEARS.get(word, 0):
+                return f"claims an experience level above the profile's best skill ({self.best:g} years)"
             ranks = sorted({r for o in opts if (r := rank(fold(o)))})
             if len(ranks) >= 3 and word in ranks and ranks.index(word) > (len(ranks) - 1) / 2:
                 return "rates a skill above the middle of the levels offered"
@@ -944,7 +971,7 @@ class Claims:
                 return f"the answer claims experience with {' '.join(left)!r}, which is not in the profile"
             if why := self._years_within(matched, years):
                 return "the answer " + why
-        return (self._answer_levels(v) or self._answer_quantities(v, t)
+        return (self._answer_levels(v) or self._answer_quantities(v, t, places)
                 or (self._answer_credentials(v) if self.facts else ""))
 
     def _answer_levels(self, v):
@@ -970,7 +997,7 @@ class Claims:
             return float(tok) if float(tok) < 1900 else None  # a calendar year is not a count
         return 12.0 if tok in ("dozen", "docena") else float(_NUMW[tok]) if tok in _NUMW else None
 
-    def _answer_quantities(self, v, t):
+    def _answer_quantities(self, v, t, places=False):
         """Every quantity next to a time word ("9 years", "12-year career", "9 of SQL", "more than ten years") or
         "since YYYY" is years of experience: tied to the nearest profile skill in its clause, or capped by the best
         skill when there is none. A quantity that cannot be read ("several", "a score of") is rejected."""
@@ -988,11 +1015,12 @@ class Claims:
                 i += 1
             quants = []
             for i, tok in enumerate(toks):
-                if m := re.fullmatch(r"(\d+(?:\.\d+)?)-years?", tok):
-                    quants.append((i, float(m.group(1)), i))
+                if m := re.fullmatch(r"(\d+(?:\.\d+)?)-(years?|months?|weeks?)", tok):
+                    quants.append((i, float(m.group(1)) * UNIT_FACTOR.get(m.group(2), 1), i))
                 elif tok in TIMEW:
                     k, val = i - 1, None
-                    while k >= max(i - 4, 0) and toks[k] != ",":
+                    near = 1 if tok in UNIT_FACTOR else 4  # "1800 USD per month" is pay, not a duration
+                    while k >= max(i - near, 0) and toks[k] != ",":
                         if (val := self._qty(toks[k])) is not None:
                             break
                         if toks[k] in UNREADABLE:
@@ -1001,13 +1029,13 @@ class Claims:
                     if val is not None:
                         if toks[max(k - 2, 0):k] == ["more", "than"] or toks[k - 1:k] in (["over"], ["above"]):
                             val += 1
-                        quants.append((k, val, i))
+                        quants.append((k, val * UNIT_FACTOR.get(tok, 1), i))
                 elif (val := self._qty(tok)) is not None and toks[i + 1:i + 2] == ["of"] and any(
-                        x in TIMEW for x in toks):
+                        x in TIMEW and x not in UNIT_FACTOR for x in toks):
                     quants.append((i, val, i + 1))  # "3 years of Python and 9 of SQL"
             for m in SINCE_YEAR.finditer(clause):
                 at = len(TOKEN_OR_COMMA.findall(clause[:m.start()]))
-                if skills or asked and clause.strip() == m.group().strip() or DOING.search(clause):
+                if skills or asked and clause.strip() == m.group().strip() or not (places or NONWORK.search(clause)):
                     quants.append((at, float(now - int(m.group(1))), at))
             for pos, val, ti in quants:
                 if skills:

@@ -678,3 +678,62 @@ def test_round13_accepts(type_, question, value):
 def test_round13_management_is_backed_by_a_managing_verb_whatever_the_verb():
     for value in ("I ran a team of 12.", "I hired and grew a team.", "I hired and onboarded 6 people."):
         assert verdict_q("Anything else?", value, "textarea", profile=MGMT)
+
+
+# --- round 14 --------------------------------------------------------------------------------------------------------
+
+R14_ACCEPT = [
+    ("number", "Pretensión salarial", "1800", None),
+    ("number", "Pretensión salarial (USD)", "1800", None),
+    ("number", "Aspiración salarial", "1800", None),
+    ("number", "Expectativa salarial", "1800", None),
+    ("number", "Salario deseado", "1800", None),
+    ("number", "Sueldo pretendido", "1800", None),
+    ("text", "Disponibilidad para empezar", "Inmediata", None),
+    ("text", "Modalidad de trabajo preferida", "Remoto", None),
+    ("select", "Grado de instrucción", "Universitario", ["Secundaria", "Universitario", "Posgrado"]),
+    ("radio", "Are you currently employed?", "Yes", None),
+    ("radio", "¿Actualmente empleado?", "Sí", None),
+    ("text", "What is your current job title?", "Backend Developer", None),
+    ("select", "Your experience level", "Intermediate", ["Beginner", "Intermediate", "Expert"]),
+    ("number", "Python level (1-10)", "5", None),
+    ("textarea", "Anything else?", "I live in Caracas since 2010.", None),
+    ("textarea", "Anything else?", "I speak two languages.", None),
+    ("textarea", "Cover letter", "I have worked for 18 months as a developer.", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R14_ACCEPT)
+def test_round14_accepts(type_, question, value, options):
+    assert verdict_q(question, value, type_, options, profile=CS)
+
+
+R14_REJECT = [
+    ("select", "Your experience level", "Expert", ["Beginner", "Intermediate", "Expert"]),
+    ("select", "Experience", "Expert", ["Beginner", "Intermediate", "Expert"]),
+    ("number", "Python level (1-10)", "10", None),
+    ("select", "Python level (1-5)", "4", ["1", "2", "3", "4", "5"]),
+    ("text", "How well do you know Python?", "10/10", None),
+    ("text", "How well do you know Python?", "9 out of 10", None),
+    ("radio", "Have you completed a postgraduate program?", "Yes", None),
+    ("radio", "Are you a postgraduate?", "Yes", None),
+    ("textarea", "Cover letter", "Python developer for 120 months.", None),
+    ("textarea", "Cover letter", "I bring 96 months of backend work", None),
+    ("textarea", "Anything else?", "Python for 520 weeks", None),
+    ("textarea", "Anything else?", "I have worked for 180 months as a developer.", None),
+    ("textarea", "Anything else?", "I have been in tech since 2005.", None),
+    ("textarea", "Anything else?", "I was cto at a startup.", None),
+    ("textarea", "Anything else?", "I was vp of engineering.", None),
+    ("textarea", "Anything else?", "I am a founder.", None),
+    ("textarea", "Anything else?", "I was in charge of the backend team and had direct reports.", None),
+    ("textarea", "Anything else?", "Two people reported to me.", None),
+    ("textarea", "Anything else?", "Tuve personas a mi cargo.", None),
+    ("textarea", "Anything else?", "I am trilingual.", None),
+    ("textarea", "Anything else?", "I speak five languages", None),
+    ("textarea", "Anything else?", "I am multilingual.", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R14_REJECT)
+def test_round14_rejects(type_, question, value, options):
+    assert not verdict_q(question, value, type_, options, profile=CS)

@@ -1370,3 +1370,129 @@
   field: {"id": "a", "type": "textarea", "question": "Anything else?"}
   llm_reply: {"answers": {"a": {"value": "Currently I work with Python.", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Currently I work with Python."}
+
+# Round 14: Spanish screening wording, level words and ratings, time units, executive roles, language counts.
+- id: honesty-r14-level-expert
+  field: {"id": "a", "type": "select", "question": "Your experience level", "options": ["Beginner", "Intermediate", "Expert"]}
+  llm_reply: {"answers": {"a": {"value": "Expert", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-experience-expert
+  field: {"id": "a", "type": "select", "question": "Experience", "options": ["Beginner", "Intermediate", "Expert"]}
+  llm_reply: {"answers": {"a": {"value": "Expert", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-python-level-10
+  field: {"id": "a", "type": "number", "question": "Python level (1-10)"}
+  llm_reply: {"answers": {"a": {"value": "10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-python-level-1-5
+  field: {"id": "a", "type": "select", "question": "Python level (1-5)", "options": ["1", "2", "3", "4", "5"]}
+  llm_reply: {"answers": {"a": {"value": "4", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-ten-of-ten
+  field: {"id": "a", "type": "text", "question": "How well do you know Python?"}
+  llm_reply: {"answers": {"a": {"value": "10/10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-postgraduate-program
+  field: {"id": "a", "type": "radio", "question": "Have you completed a postgraduate program?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-are-postgraduate
+  field: {"id": "a", "type": "radio", "question": "Are you a postgraduate?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-120-months
+  field: {"id": "a", "type": "textarea", "question": "Cover letter"}
+  llm_reply: {"answers": {"a": {"value": "Python developer for 120 months.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-96-months
+  field: {"id": "a", "type": "textarea", "question": "Cover letter"}
+  llm_reply: {"answers": {"a": {"value": "I bring 96 months of backend work", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-520-weeks
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "Python for 520 weeks", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-since-2005
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have been in tech since 2005.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-cto
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I was cto at a startup.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-vp
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I was vp of engineering.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-direct-reports
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I was in charge of the backend team and had direct reports.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-trilingual
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I am trilingual.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-five-languages
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I speak five languages", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r14-ok-pretension
+  field: {"id": "a", "type": "number", "question": "Pretensión salarial (USD)"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r14-ok-aspiracion
+  field: {"id": "a", "type": "number", "question": "Aspiración salarial"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r14-ok-sueldo-pretendido
+  field: {"id": "a", "type": "number", "question": "Sueldo pretendido"}
+  llm_reply: {"answers": {"a": {"value": "1800", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "1800"}
+
+- id: honesty-r14-ok-disponibilidad
+  field: {"id": "a", "type": "text", "question": "Disponibilidad para empezar"}
+  llm_reply: {"answers": {"a": {"value": "Inmediata", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Inmediata"}
+
+- id: honesty-r14-ok-modalidad
+  field: {"id": "a", "type": "text", "question": "Modalidad de trabajo preferida"}
+  llm_reply: {"answers": {"a": {"value": "Remoto", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Remoto"}
+
+- id: honesty-r14-ok-employed
+  field: {"id": "a", "type": "radio", "question": "Are you currently employed?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Yes"}
+
+- id: honesty-r14-ok-level-intermediate
+  field: {"id": "a", "type": "select", "question": "Your experience level", "options": ["Beginner", "Intermediate", "Expert"]}
+  llm_reply: {"answers": {"a": {"value": "Intermediate", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "Intermediate"}
+
+- id: honesty-r14-ok-python-level-5
+  field: {"id": "a", "type": "number", "question": "Python level (1-10)"}
+  llm_reply: {"answers": {"a": {"value": "5", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "5"}
+
+- id: honesty-r14-ok-18-months
+  field: {"id": "a", "type": "textarea", "question": "Cover letter"}
+  llm_reply: {"answers": {"a": {"value": "I have worked for 18 months with Python.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "I have worked for 18 months with Python."}

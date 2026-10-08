@@ -268,6 +268,10 @@ Job postings and form labels are written by third parties and end up in the prom
      native level for the named language.
    - **E. Unknown capitalised words are claims.** In a free-text answer a capitalised word that is not a stop word or a
      common sentence opener (`I`, `Currently`, `Built`, `Hola`...) is a name that must be a skill or appear in the profile.
+   **Limits.** Closed answers (yes/no, numbers, options, ratings) are checked against the profile and the check fails
+   closed. Free-text answers are checked token by token on a best-effort basis: unusual phrasings can still slip through,
+   so read long free-text answers before you rely on them. The planned approval dashboard (F7) will require your approval
+   for them.
    In detail:
    - Question side: the checks always run. A topic word (pay, notice, availability, work authorization,
      relocation, location, remote, employer, contact details, consent, demographics and similar) is only dropped
@@ -331,6 +335,13 @@ Job postings and form labels are written by third parties and end up in the prom
      -> `Yes` works. A legend that claims experience is still checked, and the value of the rule cannot name a
      technology, role, degree, certificate or language the profile lacks (a rule `Kubernetes expert` is refused).
      Questions about age, schedule, contract type, office, internet or equipment name no skill and are answered.
+   - Time units (`months`, `meses`, `weeks`, `semanas`) are converted to years in answers, on every question, and every
+     `since YYYY` counts unless the sentence is about where you live. Executive roles (`CTO`, `VP`, `founder`, `owner`,
+     `head`, `principal`) need profile text. Leading people includes `in charge of the backend team`, `had direct reports`
+     and `personas a mi cargo`. `Trilingual`, `multilingual` and `five languages` need that many language facts.
+   - Spanish screening wording (`pretensión salarial`, `aspiración`, `disponibilidad para empezar`, `modalidad preferida`,
+     `grado de instrucción`) and employment status or job title questions are ordinary topics; a title has to be one the
+     profile holds. A rating with a scale (`Python level (1-10)`) is a rating, not years.
    - Word ratings: `Expert` for a skill needs 5 years in the profile, `Advanced` 3, `Intermediate` 1; and when the
      options form an ordered scale of three or more levels, anything above the middle one is rejected too.
      `More than 3 years` claims more than 3; `3+3` or two loose numbers in a years answer are rejected; a pay answer
@@ -399,7 +410,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 272 | 272 | 100% |
+| honesty | 297 | 297 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites
