@@ -271,6 +271,14 @@ Job postings and form labels are written by third parties and end up in the prom
      against the skill's years. Lowercase names from a curated list of about 300 technologies (`jobagent/known_tech.py`) are checked too; a name outside the list is the known gap. A name in the curated list (`.NET`, `GitHub`, `Plotly`...) is a claim term even in a question that would otherwise be
      a topic; the one exception is a contact-link answer equal to a link in the profile. Only on a pure place or
      name question (city, country, employer, links) are capitalised words left alone.
+   - Stop words and topic words match whole words only (`PhoneGap`, `Calendly` or `Confirmit` are technologies, not
+     phones, adverbs or confirmations). Role and domain words (`frontend`, `mobile`, `data analyst`, `team lead`,
+     `consultant`, `engineer`...) are claim terms: they need profile text behind them (an experience title, a bullet, a
+     skill or the summary), so a backend-only profile cannot say yes to `frontend`.
+   - Word ratings: `Expert` for a skill needs 5 years in the profile, `Advanced` 3, `Intermediate` 1; and when the
+     options form an ordered scale of three or more levels, anything above the middle one is rejected too.
+     `More than 3 years` claims more than 3; `3+3` or two loose numbers in a years answer are rejected; a pay answer
+     must be a number and a currency.
    - Numeric ratings: a language rated on a scale (`1-10`, `out of 5`, `%`) is mapped proportionally to CEFR; on an unknown
      scale anything above 1 is rejected. A skill self-rating above the middle of its scale is rejected.
    - Languages: the level is mapped to CEFR (basic = A2, intermediate = B1, upper intermediate and professional
@@ -335,7 +343,7 @@ case the report still lists what was measured. Each run writes `data/evals/repor
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 134 | 134 | 100% |
+| honesty | 154 | 154 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

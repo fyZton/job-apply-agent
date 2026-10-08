@@ -270,3 +270,65 @@ R7_ACCEPT = [
 @pytest.mark.parametrize("type_, question, value, options, context", R7_ACCEPT)
 def test_round7_accepts(type_, question, value, options, context):
     assert verdict_q(question, value, type_, options, context=context, profile=GH)
+
+
+# --- round 8: stop words are whole words; roles and word ratings are claims -------------------------------------
+
+R8_REJECT = [
+    ("radio", "Do you have PhoneGap experience?", "Yes", None),
+    ("radio", "Have you used Optimizely?", "Yes", None),
+    ("radio", "Do you have Calendly experience?", "Yes", None),
+    ("radio", "Confirmit experience?", "Yes", None),
+    ("radio", "Authorize.net experience?", "Yes", None),
+    ("radio", "Do you have 5G experience?", "Yes", None),
+    ("radio", "Do you have experience with SponsorBlock?", "Yes", None),
+    ("number", "How many years of Optimizely experience?", "3", None),
+    ("number", "How many years of frontend development experience do you have?", "3", None),
+    ("radio", "Do you have team lead experience?", "Yes", None),
+    ("radio", "Do you have mobile experience?", "Yes", None),
+    ("radio", "Do you have full stack experience?", "Yes", None),
+    ("radio", "Do you have data engineering experience?", "Yes", None),
+    ("radio", "Have you worked as a data analyst?", "Yes", None),
+    ("radio", "Have you worked as a consultant?", "Yes", None),
+    ("number", "How many years as a data analyst?", "3", None),
+    ("radio", "¿Experiencia en frontend?", "Sí", ["Sí", "No"]),
+    ("textarea", "Anything else?", "I was a senior frontend developer and mobile engineer for 3 years.", None),
+    ("select", "How would you rate your Python skills?", "Expert", ["Beginner", "Intermediate", "Expert"]),
+    ("select", "Docker skill level", "Expert", ["Basic", "Intermediate", "Expert"]),
+    ("text", "Rate your SQL", "Expert", None),
+    ("text", "Python knowledge", "Expert", None),
+    ("select", "Python knowledge", "Advanced", ["Beginner", "Intermediate", "Advanced", "Expert"]),
+    ("select", "How many years of Python experience?", "More than 3 years",
+     ["Less than 1 year", "1-3 years", "More than 3 years"]),
+    ("text", "How many years of Python experience?", "3+3", None),
+    ("text", "How many years of Python experience?", "over 3 years", None),
+    ("text", "Expected salary", "Python expert, 10 years", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R8_REJECT)
+def test_round8_rejects(type_, question, value, options):
+    assert not verdict_q(question, value, type_, options)
+
+
+R8_ACCEPT = [
+    ("number", "How many years of backend experience do you have?", "3", None),
+    ("number", "Years of experience in software engineering", "3", None),
+    ("select", "How would you rate your Python skills?", "Intermediate", ["Beginner", "Intermediate", "Expert"]),
+    ("select", "Docker skill level", "Basic", ["Basic", "Intermediate", "Expert"]),
+    ("select", "How many years of Python experience?", "1-3 years",
+     ["Less than 1 year", "1-3 years", "More than 3 years"]),
+    ("text", "How many years of Python experience?", "3 years", None),
+    ("text", "How many years of Python experience?", "at least 3 years", None),
+    ("radio", "Do you agree to receive phone calls?", "Yes", None),
+    ("radio", "Are you authorized to work in Spain?", "Yes", None),
+    ("radio", "Will you require visa sponsorship now or in the future?", "Yes", None),
+    ("text", "Phone number", "+58 400 000 0000", None),
+    ("text", "Expected salary", "1800 USD per month", None),
+    ("radio", "Do you consent to the processing of your data?", "Yes", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R8_ACCEPT)
+def test_round8_accepts(type_, question, value, options):
+    assert verdict_q(question, value, type_, options)

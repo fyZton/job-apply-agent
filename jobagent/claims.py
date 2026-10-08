@@ -36,8 +36,7 @@ explain briefly detail details yourself about work working worked works trabajo 
 current present previous past recent last commercial real world technology technologies tecnologia tecnologias
 technical tecnico stack team teams remote environment similar related equivalent plus basic beginner
 intermediate intermedio advanced avanzado expert experto fluent native none ninguno ninguna basico
-developer engineer developers dev programmer analyst specialist consultant backend frontend fullstack full web
-senior junior mid lead overall general main primary own personal project projects proyecto daily
+full junior mid overall general main primary own personal project projects proyecto daily
 speak speaking spoken written writing reading understand communicate converse
 strong solid extensive deep good great proven practical significant broad prior following rank
 certified certification certifications certificate certificacion certificado certificada degree degrees
@@ -54,8 +53,10 @@ here upper alto working limited zone hear heard hire hiring letter cover date st
 horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annual yearly net gross mensual anual
 engineering ingenieria processing process data application applications
 period periods days day weeks week dias semanas semana expected desired
-preferred earliest immediately eligible valid currently first last middle given family maiden profile url link
-links handle username mobile contact nombre apellidos
+preferred earliest immediately eligible valid currently legally receive calls call require requires now future
+first last middle given family maiden
+profile url link
+links handle username contact nombre apellidos
 """.split())
 # Countries and regions: a question that names where you may work names no technology.
 PLACES = set("""
@@ -96,17 +97,56 @@ SKILL_Q = re.compile(r"\b(?:experienc\w*|proficien\w*|know|knowledge|conoc\w*|fa
 EXP_WORDS = re.compile(r"experienc|proficien|skill|knowledge|conoc|familiar")
 # Questions about pay, availability, legal status, location, contact details or consent: a number or a name there
 # is not a claim of experience. EN + ES, folded.
-NON_CLAIM = re.compile(
-    r"salary|salario|sueldo|compensation|remuneraci|wage|\bpay\b|hourly|per hour|por hora|day rate|tarifa|"
-    r"notice|preaviso|availab|disponib|start date|fecha de inicio|incorporaci|relocat|reubica|mudarse|visa\b|"
-    r"sponsor|patrocinio|authori|autoriz|permit|permiso|citizen|nationality|nacionalidad|\bage\b|edad|\b18\b|"
-    r"expectati|expectativa|pretension|country|\bpais|\bcity\b|ciudad|location|ubicacion|residen|time ?zone|"
-    r"zona horaria|\bhours\b|\bhoras\b|horario|remote|remoto|\bname\b|nombre|apellido|surname|e-?mail|correo|"
-    r"phone|telefono|celular|linkedin|github|portfolio|portafolio|website|sitio web|how did you hear|referr|"
-    r"referid|como te enteraste|gender|genero|pronoun|consent|consiento|\bterms\b|terminos|privacy|privacidad|"
-    r"policy|politica|\bagree|acepto|background check|drug|disabilit|discapacidad|veteran|\brace\b|ethnic|"
-    r"etnia|raza|employer|empleador|address|direccion|\bzip\b|postal|\bwhy\b|por que|motivat|cover letter|"
-    r"about yourself|sobre ti|tell us about|summary|confirm|acknowledg|declar|attest|reconozco")
+NON_CLAIM_WORDS = set("""
+salary salaries salario salarios sueldo sueldos compensation remuneracion wage wages pay hourly tarifa tarifas
+notice preaviso available availability disponible disponibilidad incorporacion
+relocate relocating relocation reubicacion reubicarte reubicarse mudarte mudarse mudanza
+visa visas sponsor sponsorship sponsoring patrocinio patrocinar
+authorize authorized authorised authorization authorisation autorizado autorizada autorizacion permit permits permiso
+permisos citizen citizens citizenship ciudadano ciudadania nationality nacionalidad age edad 18
+expectation expectations expectativa expectativas pretension pretensiones
+country countries pais paises city cities ciudad ciudades location locations ubicacion ubicaciones residence
+residency resident residente reside residencia timezone hours horas horario horarios
+remote remotely remoto remota remotos remotamente
+name names nombre nombres apellido apellidos surname email emails e-mail correo correos phone phones telefono
+telefonos celular movil linkedin portfolio portafolio website referral referrals referred referido
+gender genero pronoun pronouns consent consento consiento terms terminos privacy privacidad policy politica
+policies agree agreed agreement acepto aceptas acuerdo gdpr newsletter
+disability disabilities discapacidad veteran veterans race ethnic ethnicity etnia raza drug drugs
+employer employers empleador address direccion zip postal
+why motivation motivations motivated motivacion summary resumen
+confirm confirmed confirmation confirmo acknowledge acknowledged declare declared declaro attest reconozco
+""".split())
+NON_CLAIM_PHRASES = ("per hour", "por hora", "day rate", "start date", "fecha de inicio", "time zone",
+                     "zona horaria", "sitio web", "how did you hear", "como te enteraste", "background check",
+                     "cover letter", "about yourself", "sobre ti", "tell us about", "por que", "drug test")
+# Whole words and phrases only: "PhoneGap" and "Confirmit" are not about phones or confirming.
+NON_CLAIM = re.compile(r"(?<![\w.-])(?:" + "|".join(sorted(NON_CLAIM_WORDS | set(NON_CLAIM_PHRASES), key=len,
+                                                        reverse=True)) + r")(?![\w-]|\.\w)")
+# Role and domain words: not generic, so a question or answer that names one needs profile text behind it.
+ROLE_TERMS = set("""
+developer developers dev programmer engineer engineers analyst specialist consultant backend frontend fullstack web
+senior lead teamlead mobile devops qa architect manager scrummaster dataengineer dataanalyst datascientist
+productmanager projectmanager
+""".split())
+ROLE_ANS = ROLE_TERMS - set(
+    "backend developer developers dev programmer engineer engineers web senior lead manager".split())
+ADVERBS = set("""
+fluently natively currently previously recently mainly mostly directly remotely fully really only early daily weekly
+monthly yearly approximately roughly professionally personally commercially successfully independently actively
+extensively heavily regularly occasionally primarily specifically ideally highly actually totally mostly
+nearly usually normally typically generally
+actualmente anteriormente recientemente principalmente directamente completamente fluidamente nativamente
+aproximadamente totalmente normalmente generalmente
+""".split())
+NUMTOK = re.compile(r"\d+(?:[.,]\d+)?(?:[-+]\d+(?:[.,]\d+)?)?\+?(?:k|m|st|nd|rd|th|x|%)?")
+WORD_YEARS = {2: 0, 3: 1, 4: 2, 5: 3, 6: 5}  # beginner, intermediate, professional, advanced, expert: years behind
+MONEY = set("""
+usd eur gbp mxn cop ves ars clp pen brl cad k m mil month months mes meses year years yearly annual monthly mensual
+anual ano anos hour hr hora per por a al negotiable negociable gross net bruto neto approx approximately aprox
+before after tax taxes impuestos and y or o around circa to
+""".split())
+SALARY_Q = re.compile(r"\b(?:salary|salaries|salario|salarios|sueldo|compensation|wage|pay|hourly|remuneracion)\b")
 # Questions whose answer is a place, a name or a link: proper names in the answer are fine there.
 PLACE_Q = re.compile(r"country|pais|city|ciudad|location|ubicacion|residen|address|direccion|"
                      r"\bzip\b|postal|\bname\b|nombre|apellido|surname|employer|empleador|linkedin|github|portfolio|"
@@ -132,6 +172,13 @@ YES = {"yes", "y", "si", "true", "checked", "sure"}
 NO = {"no", "none", "ninguno", "ninguna", "false", "not", "never", "nunca", "0"}
 
 
+ROLE_PHRASES = tuple((re.compile(rx), w) for rx, w in (
+    (r"\bfront[- ]?end\b", "frontend"), (r"\bback[- ]?end\b", "backend"), (r"\bfull[- ]?stack\b", "fullstack"),
+    (r"\b(?:team|tech|technical) lead(?:er)?\b", "teamlead"), (r"\bdata engineer\w*", "dataengineer"),
+    (r"\bdata analy\w+", "dataanalyst"), (r"\bdata scien\w+", "datascientist"),
+    (r"\bscrum master\b", "scrummaster"), (r"\bproduct manager\b", "productmanager"),
+    (r"\bproject manager\b", "projectmanager"), (r"\bmobile (?:phone|number|no\.?|telephone)\b", "phone number"),
+))
 DOTNET = re.compile(r"(?<![\w.])\.net\b|\bdot ?net\b")
 
 
@@ -139,7 +186,10 @@ def fold(text):
     """Lowercase, no accents, no apostrophes (NFKC first): the form every comparison here uses."""
     t = unicodedata.normalize("NFKC", str(text)).lower().replace("'", "").replace("’", "")
     t = "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
-    return DOTNET.sub("dotnet", t)  # ".NET" and "dot net" are one word, not the stop word "net"
+    t = DOTNET.sub("dotnet", t)  # ".NET" and "dot net" are one word, not the stop word "net"
+    for rx, word in ROLE_PHRASES:  # "front-end", "data analyst"... are one role word each
+        t = rx.sub(word, t)
+    return t
 
 
 KNOWN_TOK = {t for t in KNOWN_TECH if t not in AMBIGUOUS and TOKEN.fullmatch(t)}
@@ -148,9 +198,9 @@ KNOWN_TOK = {t for t in KNOWN_TECH if t not in AMBIGUOUS and TOKEN.fullmatch(t)}
 def is_stop(tok):
     if tok in KNOWN_TOK:  # a technology name is always a claim term, whatever the stop rules say
         return False
-    return (tok in STOP or tok in RANK or tok in PLACES or NON_CLAIM.search(tok) or CEFR.fullmatch(tok)
-            or not any(c.isalnum() for c in tok) or tok[0].isdigit()
-            or tok.endswith("mente") or (len(tok) > 5 and tok.endswith("ly")))
+    return (tok in STOP or tok in RANK or tok in PLACES or tok in NON_CLAIM_WORDS or tok in ADVERBS
+            or CEFR.fullmatch(tok) is not None or not any(c.isalnum() for c in tok)
+            or NUMTOK.fullmatch(tok) is not None)
 
 
 def groups(text):
@@ -199,6 +249,10 @@ OUT_OF = re.compile(r"(?:out of|sobre)\s*(\d+)")
 SLASH = re.compile(r"/\s*(\d+)")
 RATING_Q = re.compile(r"\brat(?:e|ing)\b|skill level|level of|proficiency|\bscore\b|\bnivel|calific|puntu|self-?assess")
 RATING_A = re.compile(NUM + r"(?:\s*/\s*(\d+))?\s*%?")
+
+
+ARITH = re.compile(r"\d\s*[*x/+]\s*\d")
+NO_RANGE = re.compile(r"\d+\s*(?:-|to|a)\s*\d+")
 
 
 def rating_of(v):
@@ -253,10 +307,13 @@ def years_in(v, months_q, low):
     nums = list(PLAIN_NUMBER.finditer(v))
     if not nums:
         return None
-    if low and re.search(r"less than|under|up to|menos de|hasta|<", v[:nums[0].start()]):
-        return 0.0
+    head = v[:nums[0].start()]
     values = [float(m.group().replace(",", ".")) for m in nums]
+    if re.search(r"less than|under|up to|menos de|hasta|<", head) and (low or values[0] <= 1):
+        return 0.0
     n = min(values) if low else max(values)
+    if re.search(r"more than|over|mas de|greater than|above|mayor a|superior a|>", head):
+        n += 1  # "more than 3" claims more than 3
     return n / 12 if in_months == {True} or (months_q and not units) else n
 
 
@@ -521,6 +578,9 @@ class Claims:
         why = ""
         if v.strip() in self.links:
             return True, ""
+        if field["type"] in ("text", "textarea") and SALARY_Q.search(fold(field.get("question") or text)) and [
+                tok for tok in TOKEN.findall(v) if not NUMTOK.fullmatch(tok) and tok not in MONEY]:
+            return False, "a pay answer is a number and a currency, nothing else"
         q, ctx = fold(field.get("question") or text), fold(field.get("context") or "")
         topic = self._topic(q) and (not ctx or self._topic(ctx, named=False))  # label and legend both
         if self.facts:
@@ -610,6 +670,9 @@ class Claims:
             elif kind in ("yes", None):
                 exists, years = True, threshold(text)
         else:
+            if years_q and (ARITH.search(v) or not UNIT_RX.search(v) and len(PLAIN_NUMBER.findall(NO_RANGE.sub(
+                    " ", SINCE.sub(" ", v)))) > 1):
+                return "the answer has more than one number of years"
             n = None if rating else years_in(v, months_q, low=False)
             if n is not None:
                 exists, years = n > 0, n or None
@@ -627,6 +690,14 @@ class Claims:
         unmatched = self._unbacked(unmatched, f"{t} {v}", strict=True)
         if unmatched:
             return f"claims experience with {' '.join(unmatched)!r}, which is not in the profile"
+        word = 0 if kind or years_q or rating or LANG_RX.search(t) else rank(v)
+        if word and matched:  # "Expert" in Python needs the years of an expert, and not the top of the scale
+            for name, have in matched.items():
+                if have < WORD_YEARS.get(word, 0):
+                    return f"rates {name} above the {have:g} years the profile has"
+            ranks = sorted({r for o in opts if (r := rank(fold(o)))})
+            if len(ranks) >= 3 and word in ranks and ranks.index(word) > (len(ranks) - 1) / 2:
+                return "rates a skill above the middle of the levels offered"
         if rating and matched:  # a self-rating of a profile skill: no higher than the middle of the scale
             n, top = rating
             scale = (0.0, top) if top else scale_of(t, opts)
@@ -653,6 +724,10 @@ class Claims:
             matched, unmatched = self.resolve([TOKEN.findall(name)])
             if left := self._unbacked(unmatched, f"{t} {v}", t):
                 return f"the answer names {' '.join(left)!r}, which is not in the profile"
+        echo = set(TOKEN.findall(t))
+        for tok in TOKEN.findall(v):
+            if tok in ROLE_ANS and tok not in self.known and tok not in echo:
+                return f"the answer names the role {tok!r}, which is not in the profile"
         for run in answer_runs(raw, names=not places):  # a place or a name answers a place question
             matched, unmatched = self.resolve([run])
             if left := self._unbacked(unmatched, f"{t} {v}", t):
