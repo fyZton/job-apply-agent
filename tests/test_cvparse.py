@@ -594,3 +594,22 @@ def test_level_and_year_next_to_the_name_are_kept(monkeypatch):
         {"kind": "language", "name": "German", "level": "C2", "source": "English B1, German C2"},
         {"kind": "cert", "name": "PMP", "year": 2015, "source": "PMP 2015, AWS Cloud Practitioner 2023"}])
     assert facts[0]["level"] == "C2" and facts[1]["year"] == 2015
+
+
+@pytest.mark.parametrize("text, item, missing", [
+    ("Skills: Python, Java (8 years)\n",
+     {"kind": "skill", "name": "Python", "years": 8, "source": "Python Java 8 years"}, "years"),
+    ("Languages: Spanish, English (native)\n",
+     {"kind": "language", "name": "Spanish", "level": "native", "source": "Spanish English native"}, "level"),
+])
+def test_values_are_checked_against_the_cv_text_not_the_models_rewrite(monkeypatch, text, item, missing):
+    logs = []
+    (fact,) = facts_for(monkeypatch, text, [item], logs)
+    assert missing not in fact and any(f"unverified: {missing}" in m for m in logs)
+
+
+def test_source_with_other_whitespace_and_case_still_counts(monkeypatch):
+    text = "Skills: Python,\n  Java (8 years)\n"
+    (fact,) = facts_for(monkeypatch, text, [
+        {"kind": "skill", "name": "Java", "years": 8, "source": "python, JAVA (8 years)"}])
+    assert fact["years"] == 8

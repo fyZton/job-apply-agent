@@ -603,3 +603,74 @@
   field: {"id": "a", "type": "select", "question": "How would you rate your written English?", "options": ["Basic", "Intermediate", "Upper intermediate", "Advanced"]}
   llm_reply: {"answers": {"a": {"value": "Upper intermediate", "facts": ["skill.python"]}}, "unknown": []}
   expect: {"answer": "Upper intermediate"}
+
+# Round 7: known technology names always count, a legend can carry the claim, ratings need a scale.
+- id: honesty-r7-dotnet-yes
+  field: {"id": "a", "type": "radio", "question": "Do you have experience with .NET?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-dotnet-es
+  field: {"id": "a", "type": "radio", "question": "¿Tienes experiencia en .NET?", "options": ["Sí", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Sí", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-dotnet-years
+  field: {"id": "a", "type": "number", "question": "Years of .NET experience"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-github-yes
+  field: {"id": "a", "type": "radio", "question": "Do you use GitHub?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-plotly-yes
+  field: {"id": "a", "type": "radio", "question": "Have you used Plotly?", "options": ["Yes", "No"]}
+  llm_reply: {"answers": {"a": {"value": "Yes", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-consent-legend-claim
+  field: {"id": "a", "type": "checkbox", "question": "I confirm", "context": "I have 5+ years of Kubernetes experience *"}
+  llm_reply: {"answers": {"a": {"value": true, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-english-1-10
+  field: {"id": "a", "type": "select", "question": "Rate your English from 1 to 10", "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+  llm_reply: {"answers": {"a": {"value": "10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-english-1-10-number
+  field: {"id": "a", "type": "number", "question": "English proficiency (1-10)"}
+  llm_reply: {"answers": {"a": {"value": "10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-python-skill-10
+  field: {"id": "a", "type": "select", "question": "Python skill level (1-10)", "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+  llm_reply: {"answers": {"a": {"value": "10", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-decade
+  field: {"id": "a", "type": "textarea", "question": "Anything else?"}
+  llm_reply: {"answers": {"a": {"value": "I have over a decade of Python experience.", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"unanswered": true}
+
+- id: honesty-r7-ok-english-6
+  field: {"id": "a", "type": "select", "question": "Rate your English from 1 to 10", "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+  llm_reply: {"answers": {"a": {"value": "6", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "6"}
+
+- id: honesty-r7-ok-python-skill-4
+  field: {"id": "a", "type": "select", "question": "Python skill level (1-10)", "options": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+  llm_reply: {"answers": {"a": {"value": "4", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "4"}
+
+- id: honesty-r7-ok-engineering-years
+  field: {"id": "a", "type": "number", "question": "Years of experience in software engineering"}
+  llm_reply: {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "3"}
+
+- id: honesty-r7-ok-consent-privacy
+  field: {"id": "a", "type": "checkbox", "question": "I confirm", "context": "I agree to the privacy policy"}
+  llm_reply: {"answers": {"a": {"value": true, "facts": ["skill.python"]}}, "unknown": []}
+  expect: {"answer": "True"}

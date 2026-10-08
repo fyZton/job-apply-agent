@@ -162,7 +162,7 @@ CV. A fact is kept only if the quote is in the CV text and contains the fact's n
 match `chemistry` or `C++`). Every number or date the model claims, such as years, a year, start and end dates or a
 language level, must also be in the quote; one that is not is left out, logged as `unverified`, and the rest of the
 fact is kept. A years value must be a number from 0 to 60 written next to `year`, `years`, `yr`, `yrs` or `años`
-in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years. The number must also sit next to that skill's name (up to 5 words before or 3 after, never past a comma, semicolon or closing parenthesis), so in `Python, Java (8 years)` Java gets 8 and Python gets none.
+in the quote (`5 years`, `5+ años`, `years: 5`); calendar years and counts such as `12 projects` are not years. The number must also sit next to that skill's name (up to 5 words before or 3 after, never past a comma, semicolon or closing parenthesis), so in `Python, Java (8 years)` Java gets 8 and Python gets none. The model's quote is looked up in the original CV text (whitespace and case may differ, punctuation may not) and the window is read from there, so a quote rewritten as `Python Java 8 years` gets no years at all.
 Quotes must match at word boundaries, so `Java 5 years` is not backed by `RxJava 5 years`. Bullets are stored as the CV's own words, not the model's paraphrase. Facts dropped are counted in the
 log by reason (not backed by the CV, or invalid).
 
@@ -254,7 +254,8 @@ Job postings and form labels are written by third parties and end up in the prom
    In detail:
    - Question side: the checks always run. A topic word (pay, notice, availability, work authorization,
      relocation, location, remote, employer, contact details, consent, demographics and similar) is only dropped
-     from the question like any other generic word; a question is a pure non-claim topic only if nothing else is
+     from the question like any other generic word, and only when both the label and its fieldset legend are
+     topic-only (`I confirm` under `I have 5+ years of Kubernetes experience` is a Kubernetes claim); a question is a pure non-claim topic only if nothing else is
      left in it, and then it is the only case where a place, a name or a plain number is accepted without a fact.
      `How many years have you worked with Kubernetes remotely?` is a Kubernetes question, not a "remote" one. Every
      term left in a question must be a profile skill, language, degree or certificate. A multi-word skill matches by whole-word prefix (`REST APIs` is `REST APIs and integrations`). A
@@ -267,8 +268,11 @@ Job postings and form labels are written by third parties and end up in the prom
      word in mid-sentence) must be a profile skill, appear in the question, or appear in the profile text (employer,
      place, name). Languages named in the answer need a `language` fact and a level not above it; a degree or
      certificate needs an `education` or `cert` fact; `Python for 9 years` or `Ten years of Python` is checked
-     against the skill's years. Lowercase names from a curated list of about 300 technologies (`jobagent/known_tech.py`) are checked too; a name outside the list is the known gap. Only on a pure place or
+     against the skill's years. Lowercase names from a curated list of about 300 technologies (`jobagent/known_tech.py`) are checked too; a name outside the list is the known gap. A name in the curated list (`.NET`, `GitHub`, `Plotly`...) is a claim term even in a question that would otherwise be
+     a topic; the one exception is a contact-link answer equal to a link in the profile. Only on a pure place or
      name question (city, country, employer, links) are capitalised words left alone.
+   - Numeric ratings: a language rated on a scale (`1-10`, `out of 5`, `%`) is mapped proportionally to CEFR; on an unknown
+     scale anything above 1 is rejected. A skill self-rating above the middle of its scale is rejected.
    - Languages: the level is mapped to CEFR (basic = A2, intermediate = B1, upper intermediate and professional
      working = B2, advanced and fluent = C1, native = C2; a 1-5 rating is A1, A2, B1, B2, C2; `fluently` counts as fluent) and cannot be above the
      fact's. A language that is not a fact, or a level word that cannot be read (`Excellent`), is rejected.
@@ -326,12 +330,12 @@ years check) with a deterministic fake. The fake behaves like an honest model, s
 about how a real model behaves. `--live` is the run that measures the model, and it costs tokens. It skips the
 cases that force a model reply (they only make sense offline) and says how many. It exits with 1 if the overall
 pass rate is under `evals.live_min_pass_rate` (default 0.9), if nothing ran, or if the budget ran out; in that last
-case the report still lists what was measured. Each run writes `data/evals/report-YYYYMMDD-HHMMSS.json` and `.md`:
+case the report still lists what was measured. Each run writes `data/evals/report-YYYYMMDD-HHMMSS.json` and `.md` (the folder is git-ignored):
 
 | Suite | Passed | Total | Pass rate |
 |---|---|---|---|
 | fit | 7 | 7 | 100% |
-| honesty | 120 | 120 | 100% |
+| honesty | 134 | 134 | 100% |
 | injection | 10 | 10 | 100% |
 
 The tests check that the evals can fail: with a fake that always answers fit 10, the fit and injection suites

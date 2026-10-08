@@ -148,7 +148,8 @@ def test_lowercase_city_answer_and_topic_questions():
 
 def verdict_q(question, value, type_="radio", options=None, context="", profile=PROFILE):
     claims = Claims(load_facts(profile), None, profile)
-    field = {"type": type_, "question": question, "options": YN if options is None and type_ == "radio" else options}
+    field = {"type": type_, "question": question, "context": context,
+             "options": YN if options is None and type_ == "radio" else options}
     return claims.check(field, f"{context} {question}".strip(), value)[0]
 
 
@@ -219,3 +220,53 @@ def test_scrum_master_is_a_cert_not_a_degree():
 def test_generic_tech_names_are_known(answer):
     from jobagent.claims import known_tech
     assert known_tech(answer)
+
+
+# --- round 7 ---------------------------------------------------------------------------------------------------
+
+GH = {**PROFILE, "github": "https://github.com/alex-example", "fixed_answers": []}
+
+R7_REJECT = [
+    ("radio", "Do you have experience with .NET?", "Yes", None),
+    ("radio", "¿Tienes experiencia en .NET?", "Sí", ["Sí", "No"]),
+    ("number", "Years of .NET experience", "3", None),
+    ("radio", "Do you have GitHub experience?", "Yes", None),
+    ("radio", "Do you use GitHub?", "Yes", None),
+    ("number", "How many years of GitHub experience do you have?", "3", None),
+    ("radio", "Have you used Plotly?", "Yes", None),
+    ("radio", "Do you have experience with Plotly?", "Yes", None),
+    ("checkbox", "I confirm", True, None),
+    ("select", "Rate your English from 1 to 10", "10", [str(i) for i in range(1, 11)]),
+    ("number", "English proficiency (1-10)", "10", None),
+    ("number", "English proficiency", "9", None),
+    ("select", "Python skill level (1-10)", "10", [str(i) for i in range(1, 11)]),
+    ("number", "Python skill level (1-10)", "8", None),
+    ("textarea", "Anything else?", "I have over a decade of Python experience.", None),
+    ("textarea", "Anything else?", "Half a decade of Python.", None),
+    ("textarea", "Anything else?", "Python for 9 years (since 2015)", None),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options", R7_REJECT)
+def test_round7_rejects(type_, question, value, options):
+    ctx = "I have 5+ years of Kubernetes experience *" if question == "I confirm" else ""
+    assert not verdict_q(question, value, type_, options, context=ctx)
+
+
+R7_ACCEPT = [
+    ("text", "Portfolio URL", "https://github.com/alex-example", None, ""),
+    ("text", "GitHub profile", "https://github.com/alex-example", None, ""),
+    ("checkbox", "I confirm", True, None, "I agree to the privacy policy"),
+    ("select", "Rate your English from 1 to 10", "6", [str(i) for i in range(1, 11)], ""),
+    ("number", "English proficiency (1-10)", "7", None, ""),
+    ("number", "Python skill level (1-10)", "5", None, ""),
+    ("select", "Python skill level (1-10)", "4", [str(i) for i in range(1, 11)], ""),
+    ("textarea", "Anything else?", "3 years (since 2015) of Python", None, ""),
+    ("number", "Years of experience in software engineering", "3", None, ""),
+    ("number", "What is your net salary expectation?", "1500", None, ""),
+]
+
+
+@pytest.mark.parametrize("type_, question, value, options, context", R7_ACCEPT)
+def test_round7_accepts(type_, question, value, options, context):
+    assert verdict_q(question, value, type_, options, context=context, profile=GH)

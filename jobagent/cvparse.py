@@ -215,7 +215,18 @@ def _verified(key, value, q, name, source):
     return isinstance(value, str) and any(_has(value, s) for s in sides)
 
 
-def _fact(raw, haystack, used, log):
+def _span(source, text):
+    """The stretch of the original CV text that the model's source quotes (whitespace and case may differ,
+    punctuation may not), or None. Years, levels and year values are read from this span, never from the model's
+    rewrite of it."""
+    words = source[:MAX_QUOTE].split() if isinstance(source, str) else []
+    if not words or text is None:
+        return source if text is None else None
+    m = re.search(r"\s+".join(map(re.escape, words)), text, re.I)
+    return m.group() if m else None
+
+
+def _fact(raw, haystack, used, log, text=None):
     """(fact, reason). The fact is clean, or None with the reason: "unbacked" if its quote is not in the CV or
     does not mention its name, "invalid" if it is malformed. Values the quote does not contain are dropped."""
     kind = raw.get("kind") if isinstance(raw, dict) else None
@@ -233,7 +244,7 @@ def _fact(raw, haystack, used, log):
         fact[key] = raw[key].strip()
     for key in CHECKED[kind]:
         if key in raw:
-            if _verified(key, raw[key], q, fact[MAIN[kind][0]], raw["source"]):
+            if _verified(key, raw[key], q, fact[MAIN[kind][0]], _span(raw["source"], text) or ""):
                 fact[key] = raw[key].strip() if isinstance(raw[key], str) else raw[key]
             else:
                 log(f"unverified: {key} of {fact[MAIN[kind][0]]!r} is not in its quote, left out")
@@ -279,7 +290,7 @@ def draft_from_text(text, use_llm=True, log=print, model=None):
         return draft
     haystack, used, dropped = _norm(text), set(), Counter()
     for item in items:
-        fact, reason = _fact(item, haystack, used, log)
+        fact, reason = _fact(item, haystack, used, log, text)
         if fact:
             draft["facts"].append(fact)
         else:

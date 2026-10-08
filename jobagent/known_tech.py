@@ -23,7 +23,8 @@ graphql grpc rest soap oauth jwt openapi swagger kubeflow mlflow
 rabbit celery sidekiq hibernate spring springboot maven gradle sbt npm yarn pnpm
 django-rest firebase supabase prisma sequelize sqlalchemy
 python python3 sql nosql plsql tsql c r excel sheets sharepoint powerapps sas stata spss vba macros
-unix windows macos svn mercurial xml json yaml regex ajax redux rxjs webpack three.js d3
+plotly matplotlib seaborn dotnet unix windows macos svn mercurial xml json yaml regex ajax redux rxjs
+three.js d3
 """.split())
 AMBIGUOUS = {"c", "r", "excel", "sheets", "macros", "go", "make", "spark", "rust", "swift", "dart", "ruby", "next",
              "node", "express", "chef", "puppet",

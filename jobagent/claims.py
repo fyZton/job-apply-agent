@@ -52,6 +52,7 @@ programas programa programado desarrollado desarrollas puedes puede escribir esc
 implementar gestionado construido cuenta cuentas hecho haces hacer
 here upper alto working limited zone hear heard hire hiring letter cover date start inicio fecha check sitio web hora
 horaria zona enteraste usd eur gbp mxn cop ves ars clp pen brl cad monthly annual yearly net gross mensual anual
+engineering ingenieria processing process data application applications
 period periods days day weeks week dias semanas semana expected desired
 preferred earliest immediately eligible valid currently first last middle given family maiden profile url link
 links handle username mobile contact nombre apellidos
@@ -131,13 +132,22 @@ YES = {"yes", "y", "si", "true", "checked", "sure"}
 NO = {"no", "none", "ninguno", "ninguna", "false", "not", "never", "nunca", "0"}
 
 
+DOTNET = re.compile(r"(?<![\w.])\.net\b|\bdot ?net\b")
+
+
 def fold(text):
     """Lowercase, no accents, no apostrophes (NFKC first): the form every comparison here uses."""
     t = unicodedata.normalize("NFKC", str(text)).lower().replace("'", "").replace("’", "")
-    return "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+    t = "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+    return DOTNET.sub("dotnet", t)  # ".NET" and "dot net" are one word, not the stop word "net"
+
+
+KNOWN_TOK = {t for t in KNOWN_TECH if t not in AMBIGUOUS and TOKEN.fullmatch(t)}
 
 
 def is_stop(tok):
+    if tok in KNOWN_TOK:  # a technology name is always a claim term, whatever the stop rules say
+        return False
     return (tok in STOP or tok in RANK or tok in PLACES or NON_CLAIM.search(tok) or CEFR.fullmatch(tok)
             or not any(c.isalnum() for c in tok) or tok[0].isdigit()
             or tok.endswith("mente") or (len(tok) > 5 and tok.endswith("ly")))
@@ -171,11 +181,46 @@ _NUMW["una"] = 1
 _SPELLED = re.compile(r"\b(" + "|".join(_NUMW) + r")\b(?=\s*\+?\s*(?:years?|yrs?|anos?|months?|meses))")
 
 
+HALF_DECADE = re.compile(r"\bhalf an? decade\b|\bmedia decada\b")
+DECADE = re.compile(r"\b(?:(?:a|one|un|una)\s+)?(?:decade|decada)\b")
+
+
 def spell(v):
     """The folded answer with spelled numbers (one..twenty, uno..veinte) as digits: "ten years" is "10 years";
     a lone "three" is 3."""
+    v = HALF_DECADE.sub("5 years", v)
+    v = DECADE.sub("10 years", v)
     v = _SPELLED.sub(lambda m: str(_NUMW[m.group(1)]), v)
     return str(_NUMW[v.strip()]) if v.strip() in _NUMW else v
+
+
+SCALE_RX = re.compile(NUM + r"\s*(?:-|to|a)\s*" + NUM)
+OUT_OF = re.compile(r"(?:out of|sobre)\s*(\d+)")
+SLASH = re.compile(r"/\s*(\d+)")
+RATING_Q = re.compile(r"\brat(?:e|ing)\b|skill level|level of|proficiency|\bscore\b|\bnivel|calific|puntu|self-?assess")
+RATING_A = re.compile(NUM + r"(?:\s*/\s*(\d+))?\s*%?")
+
+
+def rating_of(v):
+    """(number, scale top or None) if the folded answer is a bare rating such as "8", "8/10" or "80%"."""
+    m = RATING_A.fullmatch(v.strip())
+    if not m:
+        return None
+    return float(m.group(1).replace(",", ".")), float(m.group(2)) if m.group(2) else 100.0 if "%" in v else None
+
+
+def scale_of(t, opts):
+    """(low, high) of the numeric scale a folded question or its options show, or None."""
+    if "%" in t or "porcentaje" in t:
+        return 0.0, 100.0
+    if m := SCALE_RX.search(t):
+        lo, hi = float(m.group(1).replace(",", ".")), float(m.group(2).replace(",", "."))
+        if hi > lo:
+            return lo, hi
+    if m := OUT_OF.search(t) or SLASH.search(t):
+        return 0.0, float(m.group(1))
+    nums = [float(o) for o in map(str, opts) if re.fullmatch(r"\d+", o.strip())]
+    return (min(nums), max(nums)) if len(nums) >= 2 else None
 
 
 def answer_kind(v):
@@ -192,10 +237,15 @@ def threshold(text):
     return max(nums, default=None)
 
 
+# "(since 2015)", "desde 2015", "(2015-2020)": a date, not a duration.
+SINCE = re.compile(r"\([^)]*\b(?:19|20)\d\d\b[^)]*\)|\b(?:since|desde|from)\s+(?:19|20)\d\d\b")
+
+
 def years_in(v, months_q, low):
     """Years written in the folded answer `v`, or None. "3-5" is 3 when `low` (an option's lower bound) and 5
     otherwise; "less than 1" is 0. Months count /12 when the answer or (for a bare number) the question says
     months; "1 year 6 months" adds up."""
+    v = SINCE.sub(" ", v)
     units = UNIT_RX.findall(v)
     in_months = {u[0] == "m" for _, u in units}
     if len(in_months) == 2:
@@ -408,6 +458,8 @@ class Claims:
         text += [r["value"] for r in (profile or {}).get("fixed_answers") or []
                  if isinstance(r, dict) and isinstance(r.get("value"), str)]
         self.known = set(TOKEN.findall(fold(" ".join(text))))
+        # Links and addresses the profile itself holds: a contact-link answer equal to one is backed.
+        self.links = {fold(x).strip() for x in text if re.search(r"://|@|^www\.", x)}
 
     @staticmethod
     def key(name):
@@ -437,10 +489,14 @@ class Claims:
                     i += 1
         return matched, unmatched
 
-    def _topic(self, q):
+    def _topic(self, q, named=True):
         """The folded question is only about a non-claim topic (pay, dates, place, consent...): once its topic
-        words are removed it names no skill, language, degree, certificate or technology."""
-        return (bool(NON_CLAIM.search(q)) and not EXP_WORDS.search(q) and not groups(LANG_RX.sub(" ", q))
+        words are removed it names no skill, language, degree, certificate or technology. A `named` topic must
+        also say which one; a legend (`named` False) may be neutral but must claim no experience."""
+        if not named and (YEARS_Q.search(q) or threshold(q)):
+            return False
+        return ((not named or bool(NON_CLAIM.search(q))) and not EXP_WORDS.search(q)
+                and not groups(LANG_RX.sub(" ", q))
                 and not (LANG_RX.search(q) or EDU_Q.search(q) or CERT_Q.search(q) or PURE_CERT.search(q)
                          or known_tech(q)))
 
@@ -463,24 +519,35 @@ class Claims:
         t, v = fold(text), spell(fold(value))
         kind = answer_kind(v)
         why = ""
-        q = fold(field.get("question") or text)  # the topic is the question's, not the fieldset legend's
-        topic = self._topic(q)
+        if v.strip() in self.links:
+            return True, ""
+        q, ctx = fold(field.get("question") or text), fold(field.get("context") or "")
+        topic = self._topic(q) and (not ctx or self._topic(ctx, named=False))  # label and legend both
         if self.facts:
-            why = self._language(t, v, kind) or self._credential(t, v, kind)
+            why = self._language(t, v, kind, field.get("options") or ()) or self._credential(t, v, kind)
         why = why or self._skill_claim(field, text, t, v, kind, topic)
         if not why and field["type"] in ("text", "textarea"):
             why = self._answer_claims(str(value), t, topic and bool(PLACE_Q.search(q)))
         return not why, why
 
-    def _language(self, t, v, kind):
+    def _language(self, t, v, kind, opts=()):
         if kind == "no":
             return ""
         langs = {LANGS[w] for w in LANG_RX.findall(t)} | {LANGS[w] for w in LANG_RX.findall(v)}
         if not langs:
             return ""
         level = max(rank(t), 1) if kind == "yes" else rank(v)
-        if kind is None and not level and not YEARS_Q.search(t):
-            level = SCALE.get(v.strip(), 0)
+        if kind is None and not level and not YEARS_Q.search(t) and (num := rating_of(v)):
+            n, top = num
+            scale = (0.0, top) if top else scale_of(t, opts)
+            if scale is None:
+                level = 1 if n <= 1 else None  # a rating on an unknown scale cannot be mapped
+            elif scale == (1.0, 5.0):
+                level = SCALE.get(str(int(n)), 0)
+            else:
+                level = 1 + round(min(max((n - scale[0]) / (scale[1] - scale[0]), 0), 1) * 5)
+            if level is None:
+                return "the language rating is on a scale that cannot be read"
         left = [tok for tok in TOKEN.findall(v) if not is_stop(tok) and tok not in LANGS and tok not in RANK]
         unreadable = kind is None and not level and bool(left)
         for lang in langs:
@@ -509,11 +576,11 @@ class Claims:
             return ""
         return "claims a degree or certificate that is not in the profile"
 
-    def _unbacked(self, tokens, context, echo=""):
+    def _unbacked(self, tokens, context, echo="", strict=False):
         """The tokens that neither the profile text, the `echo` (the question an answer repeats) nor (in a
         certificate or degree question or answer, named by `context`) a cert or education fact backs."""
         pool = self.known | set(TOKEN.findall(echo))
-        left = [tok for tok in tokens if tok not in pool]
+        left = [tok for tok in tokens if tok not in pool or (strict and tok in KNOWN_TOK)]
         joined = context
         if left and CERT_CTX.search(joined) and any(set(left) <= c for c in self.certs):
             return []
@@ -528,6 +595,7 @@ class Claims:
         runs = groups(LANG_RX.sub(" ", t))
         years_q = (bool(YEARS_Q.search(t)) or any(YEARS_Q.search(fold(o)) for o in opts))
         months_q, ftype = bool(MONTHS.search(t)), field["type"]
+        rating = None if years_q or LANG_RX.search(t) or not RATING_Q.search(t) else rating_of(v)
         years, exists = None, False
         if ftype == "number":
             if not PLAIN_NUMBER.fullmatch(v.strip()):
@@ -535,13 +603,14 @@ class Claims:
             n = float(v.replace(",", "."))
             exists, years = n > 0, (n / 12 if months_q else n) if years_q and n > 0 else None
         elif opts or ftype == "checkbox":
-            own = years_in(v, months_q, low=True) if opts and (years_q or not LANG_RX.search(t)) else None
+            reads_years = opts and not rating and (years_q or not LANG_RX.search(t))
+            own = years_in(v, months_q, low=True) if reads_years else None
             if own is not None:
                 exists, years = own > 0 or kind == "yes", own or None
             elif kind in ("yes", None):
                 exists, years = True, threshold(text)
         else:
-            n = years_in(v, months_q, low=False)
+            n = None if rating else years_in(v, months_q, low=False)
             if n is not None:
                 exists, years = n > 0, n or None
             elif kind == "yes":
@@ -555,9 +624,14 @@ class Claims:
         if opts and kind is None:
             runs += groups(LANG_RX.sub(" ", v))  # an option names its own technology: "5+ years with Node.js"
         matched, unmatched = self.resolve(runs)
-        unmatched = self._unbacked(unmatched, f"{t} {v}")
+        unmatched = self._unbacked(unmatched, f"{t} {v}", strict=True)
         if unmatched:
             return f"claims experience with {' '.join(unmatched)!r}, which is not in the profile"
+        if rating and matched:  # a self-rating of a profile skill: no higher than the middle of the scale
+            n, top = rating
+            scale = (0.0, top) if top else scale_of(t, opts)
+            if scale is None and n > 1 or scale and n > (scale[0] + scale[1]) / 2:
+                return "rates a skill higher than the middle of the scale"
         return self._years_within(matched, years)
 
     def _years_within(self, matched, years):

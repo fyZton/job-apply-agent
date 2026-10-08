@@ -713,3 +713,28 @@ def test_claim_ok_returns_a_reason(tmp_path):
 def test_best_option_matches_accents_in_the_fuzzy_step():
     assert best_option("Si", ["Sí", "No"]) == 0
     assert best_option("Sí", ["Si", "No"]) == 0
+
+
+# --- round 7: through decide ------------------------------------------------------------------------------------
+
+def test_dotnet_years_citing_python_is_rejected(tmp_path, monkeypatch):
+    a = claimer(tmp_path, 3)
+    fake_llm(monkeypatch, {"answers": {"a": {"value": "3", "facts": ["skill.python"]}}, "unknown": []})
+    answers, missing = a.decide([field("a", "Years of .NET experience", "number")], OFFER)
+    assert answers == {} and missing == ["Years of .NET experience"]
+
+
+@pytest.mark.parametrize("via", ["rule", "model"])
+def test_consent_checkbox_whose_legend_claims_experience_is_rejected(tmp_path, monkeypatch, via):
+    profile = {**PROFILE, "facts": [{"id": "skill.python", "kind": "skill", "name": "Python", "years": 3}],
+               "fixed_answers": [{"pattern": "confirm", "value": "Yes"}] if via == "rule" else []}
+    a = FormAssistant(profile, "name: Alex", tmp_path, "m", print)
+    fake_llm(monkeypatch, {"answers": {"a": True}, "unknown": []})
+    f = field("a", "I confirm", "checkbox", context="I have 5+ years of Kubernetes experience *")
+    f["value"] = False
+    answers, missing = a.decide([f], OFFER)
+    assert answers == {} and missing == ["I confirm"]
+    f = field("a", "I confirm", "checkbox", context="I agree to the privacy policy")
+    f["value"] = False
+    answers, _ = a.decide([f], OFFER)
+    assert answers == {"a": "Yes" if via == "rule" else True}
