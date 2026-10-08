@@ -29,6 +29,7 @@ jobs:
         if: runner.os != 'Linux'
         run: python -m playwright install chromium
       - run: python -m pytest -q
+      - run: python -m jobagent --eval
 
   secrets:
     runs-on: ubuntu-latest
